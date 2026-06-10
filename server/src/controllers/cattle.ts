@@ -199,21 +199,26 @@ export const getCowProfile = async (req: Request, res: Response) => {
         const cow = await Cattle.findOne({ _id: authReq.params.id, farmerId: authReq.user.id });
 
         if (!cow) {
-            // Check if it was recently rejected and deleted
             if (recentRejections.has(authReq.params.id)) {
-                const failureStatus = recentRejections.get(authReq.params.id)!;
-                let userMessage = `Registration failed due to: ${failureStatus}`;
+                const rejectionData = recentRejections.get(authReq.params.id);
+                // rejectionData might be a string (old code) or an object (new code)
+                let failureStatus = typeof rejectionData === 'string' ? rejectionData : rejectionData?.status;
+                let userMessage = typeof rejectionData === 'object' && rejectionData?.message 
+                    ? rejectionData.message 
+                    : `Registration failed due to: ${failureStatus}`;
                 
-                if (failureStatus === 'SPOOF_DETECTED_MUZZLE') {
-                    userMessage = 'Registration failed: Spoofing detected in the Muzzle image. Make sure it is a real photo, not a screen or print.';
-                } else if (failureStatus === 'NO_MUZZLE_DETECTED_MUZZLE_IMAGE' || failureStatus === 'NO_MUZZLE_DETECTED') {
-                    userMessage = 'Registration failed: Could not detect the muzzle clearly in the Muzzle profile image. Retake the Muzzle profile.';
-                } else if (failureStatus === 'NO_FACE_DETECTED') {
-                    userMessage = 'Registration failed: Could not detect the face clearly in the Face profile image. Retake the Face profile.';
-                } else if (failureStatus === 'NO_BIOMETRICS_DETECTED') {
-                    userMessage = 'Registration failed: Could not detect either a Face or Muzzle. Please retake the photos clearly.';
-                } else if (failureStatus === 'DUPLICATE') {
-                    userMessage = 'Registration failed: This cow is already registered.';
+                if (!userMessage || userMessage.includes('Registration failed due to')) {
+                    if (failureStatus === 'SPOOF_DETECTED_MUZZLE') {
+                        userMessage = 'Registration failed: Spoofing detected in the Muzzle image. Make sure it is a real photo, not a screen or print.';
+                    } else if (failureStatus === 'NO_MUZZLE_DETECTED_MUZZLE_IMAGE' || failureStatus === 'NO_MUZZLE_DETECTED') {
+                        userMessage = 'Registration failed: Could not detect the muzzle clearly in the Muzzle profile image. Retake the Muzzle profile.';
+                    } else if (failureStatus === 'NO_FACE_DETECTED') {
+                        userMessage = 'Registration failed: Could not detect the face clearly in the Face profile image. Retake the Face profile.';
+                    } else if (failureStatus === 'NO_BIOMETRICS_DETECTED') {
+                        userMessage = 'Registration failed: Could not detect either a Face or Muzzle. Please retake the photos clearly.';
+                    } else if (failureStatus === 'DUPLICATE') {
+                        userMessage = 'Registration failed: This cow is already registered.';
+                    }
                 }
                 
                 return res.status(400).json({ 
@@ -265,10 +270,19 @@ export const searchCow = async (req: Request, res: Response) => {
             });
 
             // Wait for the unified DL-API response
-            const { cow_id, distance } = dlResponse.data;
+            const { match, cow_id, distance, reason } = dlResponse.data;
 
-            if (!cow_id) {
-                return res.status(404).json({ success: false, message: 'Cow not found. No suspects passed the AI evaluation.' });
+            if (match === false || !cow_id) {
+                return res.status(200).json({ 
+                    success: true, 
+                    data: {
+                        cowId: null,
+                        cow: null,
+                        confidence: 0,
+                        match: false
+                    },
+                    message: reason || 'Cow not found. No suspects passed the AI evaluation.' 
+                });
             }
 
             // Optional: verify the cow exists and belongs to the farmer
@@ -282,7 +296,8 @@ export const searchCow = async (req: Request, res: Response) => {
                 data: {
                     cowId: cow_id,
                     cow: cow,
-                    confidence: 1 - distance // Rough conversion of distance to confidence for UI
+                    confidence: 1 - distance, // Rough conversion of distance to confidence for UI
+                    match: true
                 }
             });
 
@@ -301,7 +316,7 @@ export const searchCow = async (req: Request, res: Response) => {
 // POST /api/cattle/webhook/dl-api-complete -> Webhook for DL-API
 export const handleDlApiWebhook = async (req: Request, res: Response) => {
     try {
-        const { cow_id, farmer_id, status, matched_cow_id, superpoint_cache } = req.body;
+        const { cow_id, farmer_id, status, matched_cow_id, superpoint_cache, error_message } = req.body;
 
         if (!cow_id) {
             return res.status(400).json({ success: false, message: 'Missing cow_id' });
@@ -315,7 +330,7 @@ export const handleDlApiWebhook = async (req: Request, res: Response) => {
         if (status === 'DUPLICATE') {
             await Cattle.findByIdAndDelete(cow_id);
             await User.findByIdAndUpdate(farmer_id, { $pull: { cows: cow_id } });
-            recentRejections.set(cow_id, status);
+            recentRejections.set(cow_id, { status, message: error_message } as any);
             setTimeout(() => recentRejections.delete(cow_id), REJECTION_TTL_MS);
             console.log(`[Webhook] Duplicate cow deleted for cow_id: ${cow_id}`);
         } else if (status === 'DISPUTE') {
@@ -338,7 +353,7 @@ export const handleDlApiWebhook = async (req: Request, res: Response) => {
             // FAILED, NO_MUZZLE_DETECTED, FAILED_MAX_RETRIES etc
             await Cattle.findByIdAndDelete(cow_id);
             await User.findByIdAndUpdate(farmer_id, { $pull: { cows: cow_id } });
-            recentRejections.set(cow_id, status);
+            recentRejections.set(cow_id, { status, message: error_message } as any);
             setTimeout(() => recentRejections.delete(cow_id), REJECTION_TTL_MS);
             console.log(`[Webhook] Failed AI processing, cow deleted for cow_id: ${cow_id}`);
         }
