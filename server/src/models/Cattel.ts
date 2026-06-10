@@ -118,4 +118,7 @@ const CattleSchema = new Schema<ICattle>({
 // Compound index for quick farmer searches
 CattleSchema.index({ farmerId: 1, tagNumber: 1 });
 
+// Text index for optimized searching (replaces slow $regex)
+CattleSchema.index({ name: 'text', tagNumber: 'text' });
+
 export const Cattle = mongoose.model<ICattle>('Cattle', CattleSchema);

@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     Container, Paper, Typography, Box, Stepper, Step, StepButton,
     Button, TextField, MenuItem, Stack, IconButton, Divider, InputAdornment,
-    Backdrop, LinearProgress, SwipeableDrawer, List, ListItem, ListItemButton,
+    SwipeableDrawer, List, ListItem, ListItemButton,
     ListItemIcon, ListItemText, Alert, AlertTitle, Dialog, DialogTitle, DialogContent, DialogActions
 } from '@mui/material';
 import {
@@ -14,13 +14,14 @@ import WifiOffIcon from '@mui/icons-material/WifiOff';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { syncManager } from '../utils/syncManager';
 import { registerCowAPI, getCowProfileAPI, deleteCowAPI } from '../apis/apis';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Geolocation } from '@capacitor/geolocation';
 import { HTML5CameraDialog } from '../components/HTML5CameraDialog';
 import type { CameraGuidanceType } from '../components/HTML5CameraDialog';
 import { base64ToFile, compressImage } from '../utils/imageUtils';
 import { ALLOW_GALLERY_UPLOAD } from '../config';
+import { useProcessing } from '../contexts/ProcessingContext';
 // STEPS MAPPED TO YOUR WORKFLOW
 const steps = ['Basic Info', 'Lineage & Origin', 'Visual ID', 'Farmer KYC', 'Health & Stats', 'Review'];
 
@@ -536,7 +537,7 @@ const StepReview: React.FC<StepReviewProps> = ({ formData, setActiveStep }) => (
 
         <Box sx={{ textAlign: 'center', mt: 2 }}>
             <Typography variant="caption" color="text.secondary">
-                By clicking submit, this data and the metadata will be uploaded to the Ama Gau-Dhana AI Server.
+                By clicking submit, this data and the metadata will be uploaded to the Ama Gaudhana AI Server.
             </Typography>
         </Box>
     </Stack>
@@ -560,200 +561,15 @@ const AddCow: React.FC = () => {
 
     const [activeStep, setActiveStep] = useState(0);
     const scrollRef = useRef<HTMLDivElement>(null);
-    const [isSubmitting, setIsSubmitting] = useState(false);
     const [cooldownRemaining, setCooldownRemaining] = useState(0);
     const apiAttemptsRef = useRef(0);
 
+    const { isOpen, startProcessing, updateProgress, stopProcessing } = useProcessing();
+
     // Feedback State
     const [feedback, setFeedback] = useState<{ type: 'ERROR' | 'OFFLINE_SAVED' | 'SERVER_ERROR_SAVED' | 'FATAL', title: string, message: string } | null>(null);
-    const [pollingCowId, setPollingCowId] = useState<string | null>(null);
-    const [submitProgress, setSubmitProgress] = useState(0);
-    const [submitProgressTarget, setSubmitProgressTarget] = useState(0);
-    const [submitProgressTitle, setSubmitProgressTitle] = useState('Preparing registration');
-    const [submitProgressDetail, setSubmitProgressDetail] = useState('Getting everything ready for secure upload.');
     const [showDisputeDialog, setShowDisputeDialog] = useState(false);
     const [disputeCowId, setDisputeCowId] = useState<string | null>(null);
-
-    const updateSubmitProgress = useCallback((target: number, title: string, detail: string) => {
-        setSubmitProgressTarget(target);
-        setSubmitProgressTitle(title);
-        setSubmitProgressDetail(detail);
-    }, []);
-
-    const resetSubmitProgress = useCallback(() => {
-        setSubmitProgress(0);
-        setSubmitProgressTarget(0);
-        setSubmitProgressTitle('Preparing registration');
-        setSubmitProgressDetail('Getting everything ready for secure upload.');
-    }, []);
-
-    useEffect(() => {
-        if (!pollingCowId) {
-            return;
-        }
-
-        updateSubmitProgress(62, 'AI verification in progress', 'Checking the muzzle profile against registered cattle.');
-
-        const interval = setInterval(async () => {
-            try {
-                const response = await getCowProfileAPI(pollingCowId);
-                const cow = response.data;
-                const aiStatus = cow?.aiMetadata?.status;
-
-                if (aiStatus === 'PENDING') {
-                    updateSubmitProgress(88, 'AI verification in progress', 'Comparing the muzzle print with your existing records.');
-                }
-
-                if (aiStatus === 'SUCCESS') {
-                    updateSubmitProgress(100, 'Registration complete', 'Your cow has been verified and added successfully.');
-                    clearInterval(interval);
-                    setTimeout(() => {
-                        setPollingCowId(null);
-                        setIsSubmitting(false);
-                        alert('Cow registered and AI Verified successfully!');
-                        navigate('/home');
-                    }, 1000);
-                } else if (aiStatus === 'DISPUTE') {
-                    updateSubmitProgress(100, 'Review needed', 'A similar registration was found and needs your confirmation.');
-                    clearInterval(interval);
-                    setDisputeCowId(pollingCowId);
-                    setShowDisputeDialog(true);
-                } else if (aiStatus && aiStatus !== 'PENDING') {
-                    // It's FAILED, NO_MUZZLE_DETECTED, DUPLICATE, FAILED_MAX_RETRIES, or SPOOF_DETECTED
-                    updateSubmitProgress(100, 'Verification stopped', 'The muzzle photo did not pass the automated checks.');
-                    clearInterval(interval);
-                    setPollingCowId(null);
-                    setIsSubmitting(false);
-
-                    let failureMsg = 'AI processing failed for an unknown reason.';
-                    if (aiStatus === 'DUPLICATE') failureMsg = 'This cow is already registered in the system (Duplicate detected by AI).';
-                    if (aiStatus === 'NO_MUZZLE_DETECTED_MUZZLE_IMAGE') failureMsg = 'No muzzle detected in the Muzzle image. Ensure the muzzle takes up most of the frame natively.';
-                    if (aiStatus === 'SPOOF_DETECTED_MUZZLE') failureMsg = 'A spoofed image was suspected in the Muzzle profile photo. Check your Muzzle profile.';
-                    if (aiStatus === 'FAILED_MAX_RETRIES') failureMsg = 'The AI service is currently unavailable or failed multiple times.';
-
-                    const newRetryCount = (formData.retryCount || 0) + 1;
-                    const attemptsLeft = Math.max(0, 10 - newRetryCount);
-
-                    setFormData(prev => ({ ...prev, retryCount: newRetryCount }));
-
-                    if (formData.id) {
-                        try {
-                            await syncManager.savePendingCow({ ...formData, retryCount: newRetryCount, errorMessage: failureMsg, syncStatus: 'failed' });
-                        } catch (errLocal) {
-                            console.error('Failed to update local retry count', errLocal);
-                        }
-                    }
-
-                    if (newRetryCount >= 10) {
-                        if (formData.id) await syncManager.removePendingCow(formData.id);
-                        setFeedback({
-                            type: 'ERROR',
-                            title: 'Maximum Retries Reached',
-                            message: 'You have reached the maximum of 10 attempts. This registration has been discarded.'
-                        });
-                        setTimeout(() => navigate('/home'), 3500);
-                        return;
-                    }
-
-                    setFeedback({
-                        type: 'ERROR',
-                        title: 'AI Verification Rejected',
-                        message: `${failureMsg}\n\nYou have ${attemptsLeft} attempts left to fix the photos and retry.`
-                    });
-                }
-            } catch (err: unknown) {
-                const error = err as Error & { response?: { status: number } };
-                console.error("Polling error", error);
-
-                if (error.message && error.message.includes('Registration failed')) {
-                    updateSubmitProgress(100, 'Verification stopped', 'The server reported a registration error while checking the muzzle photo.');
-                    clearInterval(interval);
-                    setPollingCowId(null);
-                    setIsSubmitting(false);
-
-                    const newRetryCount = (formData.retryCount || 0) + 1;
-                    const attemptsLeft = Math.max(0, 10 - newRetryCount);
-                    setFormData(prev => ({ ...prev, retryCount: newRetryCount }));
-
-                    if (formData.id) {
-                        try {
-                            await syncManager.savePendingCow({ ...formData, retryCount: newRetryCount, errorMessage: error.message, syncStatus: 'failed' });
-                        } catch (err) {
-                            console.error("Failed to save pending cow", err);
-                        }
-                    }
-
-                    if (newRetryCount >= 10) {
-                        if (formData.id) await syncManager.removePendingCow(formData.id);
-                        setFeedback({
-                            type: 'ERROR',
-                            title: 'Maximum Retries Reached',
-                            message: 'You have reached the maximum of 10 attempts. This registration has been permanently discarded.'
-                        });
-                        setTimeout(() => navigate('/home'), 3500);
-                        return;
-                    }
-
-                    setFeedback({
-                        type: 'ERROR',
-                        title: 'AI Verification Rejected',
-                        message: `${error.message}\n\nYou have ${attemptsLeft} attempts left to fix the photos and retry.`
-                    });
-                } else if (error.message === 'Cow not found or unauthorized' || (error.response && error.response.status === 404)) {
-                    updateSubmitProgress(100, 'Verification stopped', 'The verification record could not be found on the server.');
-                    clearInterval(interval);
-                    setPollingCowId(null);
-                    setIsSubmitting(false);
-
-                    const newRetryCount = (formData.retryCount || 0) + 1;
-                    const attemptsLeft = Math.max(0, 10 - newRetryCount);
-                    setFormData(prev => ({ ...prev, retryCount: newRetryCount }));
-
-                    if (formData.id) {
-                        try { await syncManager.savePendingCow({ ...formData, retryCount: newRetryCount, errorMessage: 'Record deleted by AI', syncStatus: 'failed' }); } catch (err) {
-                            console.error("Failed to save pending cow", err);
-                        }
-                    }
-
-                    if (newRetryCount >= 10) {
-                        if (formData.id) await syncManager.removePendingCow(formData.id);
-                        setFeedback({
-                            type: 'ERROR',
-                            title: 'Maximum Retries Reached',
-                            message: 'You have reached the maximum of 10 attempts.'
-                        });
-                        setTimeout(() => navigate('/home'), 3500);
-                        return;
-                    }
-
-                    setFeedback({
-                        type: 'ERROR',
-                        title: 'AI Verification Rejected',
-                        message: `Your registration was rejected. The AI either detected a duplicate cow, poor image quality, or a spoofed image.\n\nYou have ${attemptsLeft} attempts left to fix the photos and retry.`
-                    });
-                }
-                // For other errors, we don't clear interval to allow temporary network glitches
-            }
-        }, 3000);
-
-        return () => clearInterval(interval);
-    }, [pollingCowId, navigate, formData, updateSubmitProgress]);
-
-    useEffect(() => {
-        if (!(isSubmitting || pollingCowId)) {
-            resetSubmitProgress();
-            return;
-        }
-
-        const timer = window.setInterval(() => {
-            setSubmitProgress(prev => {
-                if (prev >= submitProgressTarget) return prev;
-                return Math.min(prev + (submitProgressTarget >= 100 ? 4 : 1), submitProgressTarget);
-            });
-        }, 70);
-
-        return () => window.clearInterval(timer);
-    }, [isSubmitting, pollingCowId, resetSubmitProgress, submitProgressTarget]);
 
     // 1-minute restriction logic
     useEffect(() => {
@@ -814,75 +630,10 @@ const AddCow: React.FC = () => {
 
     const queryClient = useQueryClient();
 
-    const mutation = useMutation({
-        mutationFn: (data: CowFormData) => registerCowAPI(data),
-        retry: (failureCount, error: Error & { responseStatus?: number }) => {
-            if (error.responseStatus && error.responseStatus >= 400 && error.responseStatus < 500) return false;
-            return failureCount < 2;
-        },
-        onSuccess: async (response: { data?: { _id?: string } }) => {
-            localStorage.setItem('last_registration_time', Date.now().toString());
-
-            if (offlineDraft && offlineDraft.id) {
-                await syncManager.removePendingCow(offlineDraft.id);
-            }
-
-            queryClient.invalidateQueries({ queryKey: ['cows'] });
-
-            const cowId = response.data?._id;
-            if (cowId) {
-                updateSubmitProgress(56, 'AI verification started', 'Your upload is complete. We are now validating the muzzle profile.');
-                setPollingCowId(cowId);
-            } else {
-                updateSubmitProgress(100, 'Registration complete', 'Your cow has been saved successfully.');
-                setIsSubmitting(false);
-                alert('Saved online successfully!');
-                navigate('/home');
-            }
-        },
-        onError: async (err: Error & { responseStatus?: number }, variables) => {
-            const isValidationError = err.responseStatus && err.responseStatus >= 400 && err.responseStatus < 500;
-
-            if (isValidationError) {
-                console.warn('Validation error from server', err);
-                const maxAttempts = 10;
-                apiAttemptsRef.current += 1;
-                const newCount = apiAttemptsRef.current;
-
-                updateSubmitProgress(100, 'Submission blocked', 'The uploaded photos did not pass validation.');
-                setIsSubmitting(false);
-
-                if (newCount >= maxAttempts) {
-                    setFeedback({ type: 'FATAL', title: 'Registration Blocked', message: `You have failed AI validation ${maxAttempts} times. To prevent spam, you cannot submit this registration right now.` });
-                } else {
-                    setFeedback({ type: 'ERROR', title: 'AI Validation Failed', message: `${err.message || 'The AI detected an issue with your photos.'} (Attempt ${newCount} of ${maxAttempts})` });
-                }
-                return;
-            }
-
-            console.error('Failed to save cow on server after retries', err);
-            updateSubmitProgress(100, 'Saving locally instead', 'The server is unavailable, so this registration is being preserved on your device.');
-            setIsSubmitting(false);
-            try {
-                if (offlineDraft && offlineDraft.id) {
-                    await syncManager.removePendingCow(offlineDraft.id);
-                }
-
-                await syncManager.savePendingCow(variables);
-                localStorage.setItem('last_registration_time', Date.now().toString());
-                setFeedback({ type: 'SERVER_ERROR_SAVED', title: 'Saved Locally (Server Error)', message: `Server error: ${err.message || 'Please try again'}. Your registration has been saved locally for review and will automatically sync later.` });
-            } catch (localErr) {
-                console.error('Failed to save locally as fallback', localErr);
-                alert('Also failed to save locally.');
-            } finally {
-                setIsSubmitting(false);
-            }
-        },
-    });
-
     const handleSubmit = async () => {
-        setIsSubmitting(true);
-        updateSubmitProgress(12, 'Preparing registration', 'Confirming your live location for this submission.');
+        // Start processing and HIDE the Cancel button
+        startProcessing('Registering Cow', 'Confirming your live location for this submission.', true);
+
         let lat, lng;
         try {
             const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000 });
@@ -890,13 +641,12 @@ const AddCow: React.FC = () => {
             lng = pos.coords.longitude;
         } catch (err) {
             console.error('GPS error:', err);
-            updateSubmitProgress(100, 'Location required', 'We could not complete the registration without a GPS fix.');
-            setIsSubmitting(false);
+            stopProcessing();
             setFeedback({ type: 'ERROR', title: 'Location Required', message: 'Could not fetch your precise GPS location. Please ensure location services are enabled and permissions are granted.' });
             return;
         }
 
-        updateSubmitProgress(30, 'Uploading registration', 'Sending the required cow and KYC photos securely.');
+        updateProgress(30, 'Uploading required cow and KYC photos securely...');
 
         const apiPayload = {
             ...formData,
@@ -916,20 +666,103 @@ const AddCow: React.FC = () => {
                 if (offlineDraft && offlineDraft.id) {
                     await syncManager.removePendingCow(offlineDraft.id);
                 }
-
-                updateSubmitProgress(100, 'Saved locally', 'You are offline, so this registration is being stored on your device.');
                 await syncManager.savePendingCow({ ...formData, lat, lng });
                 localStorage.setItem('last_registration_time', Date.now().toString());
+                stopProcessing();
                 setFeedback({ type: 'OFFLINE_SAVED', title: 'Saved Locally (Offline)', message: 'No internet connection detected. Your data is safely stored on this device and will sync automatically when you are back online.' });
             } catch (err) {
                 console.error('Failed to save locally', err);
+                stopProcessing();
                 alert('Failed to save locally.');
-            } finally {
-                setIsSubmitting(false);
             }
         } else {
-            updateSubmitProgress(42, 'Uploading registration', 'Your photos are on the way to the server for verification.');
-            mutation.mutate(apiPayload as never);
+            updateProgress(45, 'Your photos are being sent to the AI servers for verification...');
+            try {
+                // Register Cow (will return 202 Accepted)
+                const response = await registerCowAPI(apiPayload);
+                const cowId = response.data?._id;
+
+                if (!cowId) throw new Error('Registration failed to return Cow ID');
+
+                updateProgress(60, 'AI Server received images. Running Biometric Extraction...');
+
+                // Start polling mechanism
+                let pollAttempts = 0;
+                const maxPolls = 60; // 60 polls at 5 seconds = 5 minutes timeout
+
+                const pollInterval = setInterval(async () => {
+                    pollAttempts++;
+                    try {
+                        const cowResponse = await getCowProfileAPI(cowId);
+                        const cowStatus = cowResponse?.data?.aiMetadata?.status;
+
+                        if (pollAttempts === 3) updateProgress(70, 'Running duplicate checks against entire database...');
+                        if (pollAttempts === 8) updateProgress(85, 'Cross-matching facial features and muzzle patterns...');
+
+                        if (cowStatus === 'SUCCESS') {
+                            clearInterval(pollInterval);
+                            updateProgress(100, 'Registration complete! Cow verified successfully.');
+
+                            localStorage.setItem('last_registration_time', Date.now().toString());
+                            if (offlineDraft && offlineDraft.id) {
+                                await syncManager.removePendingCow(offlineDraft.id);
+                            }
+                            queryClient.invalidateQueries({ queryKey: ['cows'] });
+
+                            setTimeout(() => {
+                                stopProcessing();
+                                navigate('/home');
+                            }, 1500);
+                        } else if (cowStatus === 'DISPUTE') {
+                            clearInterval(pollInterval);
+                            stopProcessing();
+                            setDisputeCowId(cowId);
+                            setShowDisputeDialog(true);
+                        } else if (cowStatus === 'FAILED' || cowStatus === 'DUPLICATE') {
+                            // Handled by catch block normally due to 400 error return from getCowProfileAPI
+                            clearInterval(pollInterval);
+                            stopProcessing();
+                            setFeedback({ type: 'ERROR', title: 'AI Verification Failed', message: 'The AI detected an issue with your photos.' });
+                        }
+                    } catch (pollErr: any) {
+                        if (pollErr.isRejected) {
+                            clearInterval(pollInterval);
+                            stopProcessing();
+                            apiAttemptsRef.current += 1;
+                            const newCount = apiAttemptsRef.current;
+
+                            if (pollErr.status === 'DISPUTE') {
+                                setDisputeCowId(cowId);
+                                setShowDisputeDialog(true);
+                                return;
+                            }
+
+                            if (newCount >= 10) {
+                                setFeedback({ type: 'FATAL', title: 'Registration Blocked', message: `You have failed AI validation 10 times. To prevent spam, you cannot submit this registration right now.` });
+                            } else {
+                                setFeedback({ type: 'ERROR', title: 'AI Verification Failed', message: `${pollErr.message || 'The AI detected an issue with your photos.'} (Attempt ${newCount} of 10)` });
+                            }
+                        } else if (pollAttempts >= maxPolls) {
+                            clearInterval(pollInterval);
+                            stopProcessing();
+                            setFeedback({ type: 'ERROR', title: 'Timeout', message: 'The AI server is taking too long to respond. Please check your network or try again later.' });
+                        }
+                        // otherwise keep polling
+                    }
+                }, 5000);
+
+            } catch (err: any) {
+                stopProcessing();
+                console.error('Server error during registration request', err);
+                try {
+                    if (offlineDraft && offlineDraft.id) await syncManager.removePendingCow(offlineDraft.id);
+                    await syncManager.savePendingCow({ ...formData, lat, lng });
+                    localStorage.setItem('last_registration_time', Date.now().toString());
+                    setFeedback({ type: 'SERVER_ERROR_SAVED', title: 'Saved Locally (Server Error)', message: `Server error: ${err.message || 'Please try again'}. Your registration has been saved locally for review and will automatically sync later.` });
+                } catch (localErr) {
+                    console.error('Failed to save locally as fallback', localErr);
+                }
+            }
         }
     };
 
@@ -981,89 +814,7 @@ const AddCow: React.FC = () => {
 
     return (
         <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'background.default' }}>
-            <Backdrop
-                sx={{
-                    color: '#fff',
-                    zIndex: (theme) => theme.zIndex.drawer + 2,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 2.5,
-                    backdropFilter: 'blur(10px)',
-                    background: 'rgba(0,0,0,0.85)'
-                }}
-                open={isSubmitting || mutation.isPending || !!pollingCowId}
-            >
-                <Box sx={{
-                    width: '90%',
-                    maxWidth: 420,
-                    bgcolor: 'rgba(15,23,42,0.88)',
-                    borderRadius: 4,
-                    p: 3,
-                    boxShadow: '0 20px 48px rgba(0,0,0,0.35)',
-                    border: '1px solid rgba(255,255,255,0.08)'
-                }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2, mb: 2.5 }}>
-                        <Box>
-                            <Typography variant="overline" sx={{ color: 'rgba(148,163,184,0.95)', letterSpacing: 1.2, fontWeight: 700 }}>
-                                Registration Progress
-                            </Typography>
-                            <Typography variant="h5" fontWeight={800} sx={{ mt: 0.5, lineHeight: 1.2 }}>
-                                {submitProgressTitle}
-                            </Typography>
-                        </Box>
-                        <Box sx={{
-                            minWidth: 72,
-                            px: 1.5,
-                            py: 0.75,
-                            borderRadius: 999,
-                            bgcolor: 'rgba(34,197,94,0.14)',
-                            border: '1px solid rgba(74,222,128,0.22)',
-                            textAlign: 'center'
-                        }}>
-                            <Typography sx={{ color: '#86EFAC', fontWeight: 800, fontSize: 18, lineHeight: 1 }}>
-                                {submitProgress}%
-                            </Typography>
-                        </Box>
-                    </Box>
 
-                    <LinearProgress
-                        variant="determinate"
-                        value={submitProgress}
-                        sx={{
-                            height: 10,
-                            borderRadius: 999,
-                            bgcolor: 'rgba(255,255,255,0.08)',
-                            '& .MuiLinearProgress-bar': {
-                                borderRadius: 999,
-                                background: 'linear-gradient(90deg, #22C55E 0%, #86EFAC 100%)',
-                            },
-                        }}
-                    />
-
-                    <Typography variant="body2" sx={{ mt: 2, color: 'rgba(226,232,240,0.8)', lineHeight: 1.6 }}>
-                        {submitProgressDetail}
-                    </Typography>
-
-                    <Typography variant="caption" sx={{ mt: 1.5, display: 'block', color: 'rgba(148,163,184,0.8)' }}>
-                        {pollingCowId ? 'This usually takes 10 to 20 seconds.' : 'Please keep the app open until the upload completes.'}
-                    </Typography>
-                </Box>
-
-                <Button
-                    variant="text"
-                    size="small"
-                    sx={{ color: 'rgba(255,255,255,0.5)', mt: 1, textTransform: 'none' }}
-                    onClick={() => {
-                        if (window.confirm("AI processing is running in background. You can check the 'My Cows' list later. Exit now?")) {
-                            setPollingCowId(null);
-                            setIsSubmitting(false);
-                            navigate('/home');
-                        }
-                    }}
-                >
-                    Process in Background
-                </Button>
-            </Backdrop>
 
             <Dialog
                 open={feedback !== null}
@@ -1128,8 +879,6 @@ const AddCow: React.FC = () => {
                             } catch (e) { console.error(e); }
                         }
                         setShowDisputeDialog(false);
-                        setPollingCowId(null);
-                        setIsSubmitting(false);
                         alert('Registration cancelled.');
                         navigate('/home');
                     }} color="inherit">
@@ -1137,8 +886,6 @@ const AddCow: React.FC = () => {
                     </Button>
                     <Button onClick={() => {
                         setShowDisputeDialog(false);
-                        setPollingCowId(null);
-                        setIsSubmitting(false);
                         alert('Registered with a Dispute flag. An admin will review it.');
                         navigate('/home');
                     }} variant="contained" color="warning">
@@ -1195,7 +942,7 @@ const AddCow: React.FC = () => {
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1, px: 2 }}>
                         <Button
                             size="small"
-                            disabled={activeStep === 0 || isSubmitting}
+                            disabled={activeStep === 0 || isOpen}
                             onClick={handleBack}
                             sx={{ color: 'text.secondary', fontWeight: 600, fontSize: '0.7rem', px: 1.5, py: 0.5, borderRadius: 4, bgcolor: '#F3F4F6', '&:hover': { bgcolor: '#E5E7EB' } }}
                         >
@@ -1204,12 +951,12 @@ const AddCow: React.FC = () => {
                         <Button
                             size="small"
                             variant="contained"
-                            disabled={isSubmitting}
+                            disabled={isOpen}
                             onClick={activeStep === steps.length - 1 ? handleSubmit : handleNext}
                             endIcon={activeStep === steps.length - 1 ? <CheckCircle sx={{ fontSize: '14px !important' }} /> : <ArrowForward sx={{ fontSize: '14px !important' }} />}
                             sx={{ fontWeight: 700, fontSize: '0.7rem', px: 1.5, py: 0.5, borderRadius: 4, boxShadow: 'none' }}
                         >
-                            {mutation.isPending || isSubmitting ? 'Wait..' : (activeStep === steps.length - 1 ? 'Submit' : 'Next')}
+                            {isOpen ? 'Wait..' : (activeStep === steps.length - 1 ? 'Submit' : 'Next')}
                         </Button>
                     </Box>
                 </Container>
@@ -1243,7 +990,7 @@ const AddCow: React.FC = () => {
                         </Button>
                         <Box sx={{ display: 'flex', gap: 1 }}>
                             <Button
-                                disabled={activeStep === 0 || isSubmitting}
+                                disabled={activeStep === 0 || isOpen}
                                 onClick={handleBack}
                                 sx={{ color: 'text.secondary', fontWeight: 600, bgcolor: '#F3F4F6', '&:hover': { bgcolor: '#E5E7EB' }, borderRadius: 6, px: 3 }}
                             >
@@ -1251,12 +998,12 @@ const AddCow: React.FC = () => {
                             </Button>
                             <Button
                                 variant="contained"
-                                disabled={isSubmitting}
+                                disabled={isOpen}
                                 onClick={activeStep === steps.length - 1 ? handleSubmit : handleNext}
                                 endIcon={activeStep === steps.length - 1 ? <CheckCircle /> : <ArrowForward />}
                                 sx={{ borderRadius: 6, px: 4, boxShadow: '0 4px 12px rgba(46, 125, 50, 0.3)', fontWeight: 700, py: 1.5 }}
                             >
-                                {mutation.isPending || isSubmitting ? 'Wait..' : (activeStep === steps.length - 1 ? 'Submit' : 'Next')}
+                                {isOpen ? 'Wait..' : (activeStep === steps.length - 1 ? 'Submit' : 'Next')}
                             </Button>
                         </Box>
                     </Box>

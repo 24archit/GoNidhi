@@ -1,22 +1,27 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import axios from 'axios';
 import {
-    Container, Box, TextField, InputAdornment, IconButton, Typography,
-    Tabs, Tab, Paper, Avatar, Chip, Button, Stack, LinearProgress,
-    Dialog, DialogTitle, DialogContent, DialogActions, Skeleton,
-    Divider
+    Container, Box, TextField, IconButton, Typography,
+    Paper, Avatar, Chip, Button, Stack, LinearProgress,
+    Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Skeleton,
+    Divider, Fade
 } from '@mui/material';
 import {
-    Search, FilterList, ArrowForwardIos, Close,
+    Search, ArrowForwardIos, Close,
     CameraAlt, CheckCircle, History,
-    PhotoLibrary
+    PhotoLibrary, Fingerprint, Tag, QrCodeScanner,
+    Visibility, ArrowBack
 } from '@mui/icons-material';
+import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { getMyCattleAPI, searchCowAPI } from '../apis/apis';
 import { HTML5CameraDialog } from '../components/HTML5CameraDialog';
 import { base64ToFile, compressImage, getImageUrl } from '../utils/imageUtils';
 import { ALLOW_GALLERY_UPLOAD } from '../config';
-// ── Shared Types ────────────────────────────────────────────────────────────
+import { useProcessing } from '../contexts/ProcessingContext';
+
+// ── Types ───────────────────────────────────────────────────────────────────
 interface CowListSummary {
     _id: string;
     name: string;
@@ -30,42 +35,32 @@ interface CowListSummary {
 const SEARCH_HISTORY_KEY = 'gau_netra_search_history';
 const MAX_HISTORY = 3;
 
-// ── Utilities & Hooks ───────────────────────────────────────────────────────
-
-// 1. Custom Hook for Search History
 function useSearchHistory() {
     const [history, setHistory] = useState<string[]>(() => {
         try { return JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY) || '[]'); }
         catch { return []; }
     });
-
     const addHistory = useCallback((term: string) => {
         const t = term.trim();
         if (!t) return;
         setHistory(prev => {
-            const newHistory = [t, ...prev.filter(item => item !== t)].slice(0, MAX_HISTORY);
-            localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(newHistory));
-            return newHistory;
+            const h = [t, ...prev.filter(i => i !== t)].slice(0, MAX_HISTORY);
+            localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(h));
+            return h;
         });
     }, []);
-
     return { history, addHistory };
 }
 
-// 2. Performant Search Helper
 const performSearch = (cows: CowListSummary[], term: string) => {
     const t = term.trim().toLowerCase();
     if (!t) return [];
-
     return cows.filter(c =>
         (c.tagNumber || '').toLowerCase() === t ||
         (c.name || '').toLowerCase().includes(t) ||
         (c.breed || '').toLowerCase().includes(t)
     );
 };
-
-
-
 
 const getStatusColor = (status: string): 'error' | 'warning' | 'info' | 'default' | 'success' => {
     switch (status) {
@@ -77,208 +72,19 @@ const getStatusColor = (status: string): 'error' | 'warning' | 'info' | 'default
     }
 };
 
-// ── Search By ID Tab ─────────────────────────────────────────────────────────
-const SearchTab = () => {
-    const navigate = useNavigate();
-    const [searchTerm, setSearchTerm] = useState('');
-    const [submittedTerm, setSubmittedTerm] = useState('');
-    const { history, addHistory } = useSearchHistory();
-
-    const { data: cowsResponse, isLoading } = useQuery({
-        queryKey: ['cows'],
-        queryFn: getMyCattleAPI,
-    });
-
-    const cows = useMemo<CowListSummary[]>(
-        () => cowsResponse?.data || [],
-        [cowsResponse]
-    );
-
-    const filteredCows = useMemo(() =>
-        performSearch(cows, submittedTerm),
-        [cows, submittedTerm]);
-
-    const commit = useCallback((term: string) => {
-        if (!term.trim()) return;
-        setSubmittedTerm(term.trim());
-        addHistory(term);
-    }, [addHistory]);
-
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') commit(searchTerm);
-    };
-
-    const clearSearch = () => {
-        setSearchTerm('');
-        setSubmittedTerm('');
-    };
-
-    const hasSearched = submittedTerm.trim().length > 0;
-
-    return (
-        <Box sx={{ mt: 2 }}>
-            {/* Search bar */}
-            <Paper elevation={0} sx={{ p: '2px 4px', display: 'flex', alignItems: 'center', border: '1px solid #ddd', borderRadius: 3, mb: 1.5 }}>
-                <InputAdornment position="start" sx={{ pl: 1 }}><Search color="action" /></InputAdornment>
-                <TextField
-                    fullWidth
-                    placeholder="Tag No, Name or Breed"
-                    variant="standard"
-                    InputProps={{ disableUnderline: true }}
-                    sx={{ ml: 1, flex: 1 }}
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                />
-                {searchTerm ? (
-                    <IconButton sx={{ p: '8px' }} onClick={clearSearch}><Close fontSize="small" /></IconButton>
-                ) : (
-                    <IconButton sx={{ p: '8px' }}><FilterList /></IconButton>
-                )}
-            </Paper>
-            <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
-                <Button
-                    variant="contained"
-                    onClick={() => commit(searchTerm)}
-                    disabled={!searchTerm.trim()}
-                    sx={{ borderRadius: 3, textTransform: 'none', px: 5, fontWeight: 600 }}
-                >
-                    Search
-                </Button>
-            </Box>
-
-            {/* Recent searches */}
-            {!hasSearched && history.length > 0 && (
-                <Box sx={{ mb: 2 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
-                        <History sx={{ fontSize: 14, color: 'text.secondary' }} />
-                        <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                            RECENT SEARCHES
-                        </Typography>
-                    </Box>
-                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                        {history.map(h => (
-                            <Chip
-                                key={h}
-                                label={h}
-                                size="small"
-                                variant="outlined"
-                                onClick={() => { setSearchTerm(h); commit(h); }}
-                                sx={{ cursor: 'pointer', fontWeight: 500 }}
-                            />
-                        ))}
-                    </Stack>
-                </Box>
-            )}
-
-            {/* Results */}
-            {hasSearched && (
-                isLoading ? (
-                    // Skeleton Loading
-                    <Stack spacing={2} sx={{ mt: 2 }}>
-                        <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                            SEARCHING HERD...
-                        </Typography>
-                        {[1, 2, 3].map((i) => (
-                            <Paper key={i} elevation={0} sx={{ p: 2, borderRadius: 3, border: '1px solid #eee', display: 'flex', alignItems: 'center', gap: 2 }}>
-                                <Skeleton variant="rounded" width={64} height={64} sx={{ borderRadius: 3 }} />
-                                <Box sx={{ flexGrow: 1 }}>
-                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                                        <Skeleton variant="text" width="40%" />
-                                        <Skeleton variant="rounded" width={40} height={20} />
-                                    </Box>
-                                    <Skeleton variant="text" width="60%" />
-                                </Box>
-                            </Paper>
-                        ))}
-                    </Stack>
-                ) : (
-                    <Stack spacing={2}>
-                        <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                            {filteredCows.length} RESULT{filteredCows.length !== 1 ? 'S' : ''} FOR "{submittedTerm}"
-                        </Typography>
-
-                        {filteredCows.length === 0 ? (
-                            <Box sx={{ textAlign: 'center', py: 5, opacity: 0.6 }}>
-                                <Typography fontSize={36}>🐄</Typography>
-                                <Typography variant="body1" fontWeight={600}>No cattle matched</Typography>
-                                <Typography variant="caption" color="text.secondary">
-                                    Try the Tag Number, Name, or use AI Scan
-                                </Typography>
-                            </Box>
-                        ) : (
-                            filteredCows.map(cow => (
-                                <Paper
-                                    key={cow._id}
-                                    elevation={0}
-                                    onClick={() => navigate(`/profile/${cow._id}`)}
-                                    sx={{
-                                        p: 2, borderRadius: 3, border: '1px solid #eee',
-                                        display: 'flex', alignItems: 'center', gap: 2,
-                                        cursor: 'pointer',
-                                        transition: 'all 0.2s ease',
-                                        '&:active': { bgcolor: '#f5f5f5', transform: 'scale(0.98)' }
-                                    }}
-                                >
-                                    <Avatar
-                                        src={getImageUrl(cow.photos?.faceProfile) || getImageUrl(cow.photos?.muzzle) || ''}
-                                        variant="rounded"
-                                        sx={{ width: 64, height: 64, borderRadius: 3, bgcolor: 'grey.200' }}
-                                    />
-                                    <Box sx={{ flexGrow: 1 }}>
-                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
-                                            <Typography variant="subtitle1" fontWeight="bold">{cow.name || 'Unnamed'}</Typography>
-                                            <Chip
-                                                label={cow.currentStatus}
-                                                size="small"
-                                                color={getStatusColor(cow.currentStatus)}
-                                                sx={{ height: 20, fontSize: '0.7rem', fontWeight: 600 }}
-                                            />
-                                        </Box>
-                                        <Stack direction="row" spacing={1} alignItems="center">
-                                            <Typography variant="caption" sx={{ bgcolor: 'grey.100', px: 0.8, py: 0.2, borderRadius: 1 }}>
-                                                #{cow.tagNumber}
-                                            </Typography>
-                                            <Typography variant="caption" color="text.secondary">
-                                                {cow.breed} • {cow.ageMonths ? `${cow.ageMonths}m` : 'Age unknown'}
-                                            </Typography>
-                                        </Stack>
-                                    </Box>
-                                    <ArrowForwardIos fontSize="small" sx={{ color: '#ccc', fontSize: 14 }} />
-                                </Paper>
-                            ))
-                        )}
-                    </Stack>
-                )
-            )}
-
-            {/* Empty state before any search */}
-            {!hasSearched && history.length === 0 && (
-                <Box sx={{ textAlign: 'center', py: 6, opacity: 0.55 }}>
-                    <Typography fontSize={40}>🔎</Typography>
-                    <Typography variant="body1" fontWeight={600} sx={{ mt: 1 }}>Search your herd</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                        Type a Tag Number or Name and press Search
-                    </Typography>
-                </Box>
-            )}
-        </Box>
-    );
-};
-
-// ── Photo Capture Component ───────────────────────────────────────────────────
+// ── Photo Capture Box ─────────────────────────────────────────────────────────
 const PhotoCaptureBox = ({
-    label,
-    guidanceType,
-    currentImage,
-    onCapture
+    label, guidanceType, currentImage, onCapture, icon, onPreview
 }: {
-    label: string,
-    guidanceType: 'face' | 'muzzle',
-    currentImage?: string,
-    onCapture: (img: string) => void
+    label: string;
+    guidanceType: 'face' | 'muzzle';
+    currentImage?: string;
+    onCapture: (img: string) => void;
+    icon?: React.ReactNode;
+    onPreview?: (img: string) => void;
 }) => {
     const [cameraOpen, setCameraOpen] = useState(false);
+    const [confirmOpen, setConfirmOpen] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -288,16 +94,8 @@ const PhotoCaptureBox = ({
             reader.onload = async (event) => {
                 const result = event.target?.result;
                 if (typeof result === 'string') {
-
-                    // --- DYNAMIC COMPRESSION LOGIC ---
                     const isMuzzle = guidanceType === 'muzzle';
-
-                    // Muzzle: 1280px max, 95% quality (preserves ridges)
-                    // Others: 800px max, 80% quality (saves bandwidth)
-                    const targetSize = isMuzzle ? 1280 : 800;
-                    const targetQuality = isMuzzle ? 0.95 : 0.80;
-
-                    const compressed = await compressImage(result, targetSize, targetSize, targetQuality);
+                    const compressed = await compressImage(result, isMuzzle ? 1280 : 800, isMuzzle ? 1280 : 800, isMuzzle ? 0.95 : 0.80);
                     onCapture(compressed);
                 }
             };
@@ -306,402 +104,576 @@ const PhotoCaptureBox = ({
     };
 
     const handleCameraCapture = async (capturedSrc: string) => {
-        // Apply the exact same logic for live camera captures
         const isMuzzle = guidanceType === 'muzzle';
-        const targetSize = isMuzzle ? 1280 : 800;
-        const targetQuality = isMuzzle ? 0.95 : 0.80;
-
-        const compressed = await compressImage(capturedSrc, targetSize, targetSize, targetQuality);
+        const compressed = await compressImage(capturedSrc, isMuzzle ? 1280 : 800, isMuzzle ? 1280 : 800, isMuzzle ? 0.95 : 0.80);
         onCapture(compressed);
         setCameraOpen(false);
-        if (compressed !== capturedSrc && capturedSrc.startsWith('blob:')) {
-            URL.revokeObjectURL(capturedSrc);
-        }
-    }
+        if (compressed !== capturedSrc && capturedSrc.startsWith('blob:')) URL.revokeObjectURL(capturedSrc);
+    };
 
     return (
         <>
-            <Paper
-                elevation={0}
-                sx={{
-                    bgcolor: '#F3F4F6', border: '2px dashed #CBD5E1', borderRadius: 1,
-                    p: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                    height: 200, position: 'relative', overflow: 'hidden',
-                }}
-            >
-                {currentImage ? (
-                    <>
-                        <img src={currentImage} alt={label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        <Box sx={{
-                            position: 'absolute', top: 0, left: 0, right: 0,
-                            bgcolor: 'rgba(0,0,0,0.5)', color: 'white', py: 0.5, px: 1,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2
-                        }}>
-                            <Typography variant="caption" fontWeight="bold" noWrap>{label}</Typography>
-                        </Box>
+            {/* Empty / placeholder state */}
+            {!currentImage && (
+                <Paper
+                    elevation={0}
+                    onClick={() => setConfirmOpen(true)}
+                    sx={{
+                        border: '2px dashed #A5D6A7',
+                        borderRadius: 2,
+                        bgcolor: '#F6FBF6',
+                        cursor: 'pointer',
+                        p: 2,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 1,
+                        transition: 'all 0.2s',
+                        '&:active': { bgcolor: '#EAF5EA', transform: 'scale(0.99)' },
+                    }}
+                >
+                    <Box sx={{
+                        width: 44, height: 44, borderRadius: '50%',
+                        bgcolor: '#C8E6C9',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    }}>
+                        {icon || <CameraAlt sx={{ color: '#2E7D32', fontSize: 22 }} />}
+                    </Box>
+                    <Box sx={{ textAlign: 'center' }}>
+                        <Typography variant="body2" fontWeight={700} color="text.primary" sx={{ mb: 0.2 }}>
+                            {label}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                            Tap to open camera
+                        </Typography>
+                    </Box>
+                    {ALLOW_GALLERY_UPLOAD && (
+                        <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                            startIcon={<PhotoLibrary sx={{ fontSize: 15 }} />}
+                            sx={{ textTransform: 'none', fontSize: '0.75rem', borderRadius: 2, py: 0.4, px: 2, borderColor: '#A5D6A7', color: 'primary.dark' }}
+                        >
+                            Gallery
+                        </Button>
+                    )}
+                </Paper>
+            )}
 
-                        <Box sx={{
-                            position: 'absolute', bottom: 0, left: 0, right: 0,
-                            bgcolor: 'rgba(0,0,0,0.6)', display: 'flex', zIndex: 2,
-                        }}>
-                            <Button
-                                size="small" color="inherit" onClick={() => setCameraOpen(true)}
-                                startIcon={<CameraAlt sx={{ fontSize: 16 }} />}
-                                sx={{ flex: 1, color: 'white', borderRadius: 0, py: 1 }}
-                            >
-                                <Typography variant="caption" fontWeight="bold">Retake</Typography>
-                            </Button>
-                            {ALLOW_GALLERY_UPLOAD && (
-                                <>
-                                    <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.3)' }} />
-                                    <Button
-                                        size="small" color="inherit" onClick={() => fileInputRef.current?.click()}
-                                        startIcon={<PhotoLibrary sx={{ fontSize: 16 }} />}
-                                        sx={{ flex: 1, color: 'white', borderRadius: 0, py: 1 }}
-                                    >
-                                        <Typography variant="caption" fontWeight="bold">Gallery</Typography>
-                                    </Button>
-                                </>
-                            )}
-                        </Box>
-                    </>
-                ) : (
-                    <Box sx={{ zIndex: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-                        <Typography variant="body1" fontWeight={600} align="center" sx={{ mb: 2 }}>{label}</Typography>
-                        <Stack direction="row" spacing={2} sx={{ width: '100%', px: 2, justifyContent: 'center' }}>
-                            <Button
-                                variant="contained" color="primary" onClick={() => setCameraOpen(true)}
-                                startIcon={<CameraAlt />} sx={{ borderRadius: 4, textTransform: 'none', px: 3 }}
-                            >
-                                Camera
-                            </Button>
-                            {ALLOW_GALLERY_UPLOAD && (
+            {/* Captured state */}
+            {currentImage && (
+                <Box sx={{ borderRadius: 2, overflow: 'hidden', position: 'relative', height: 140 }}>
+                    <img
+                        src={currentImage}
+                        alt={label}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', cursor: onPreview ? 'pointer' : 'default' }}
+                        onClick={() => onPreview?.(currentImage)}
+                    />
+                    {/* Top badge */}
+                    <Box sx={{
+                        position: 'absolute', top: 0, left: 0, right: 0,
+                        px: 2, py: 1,
+                        background: 'linear-gradient(to bottom, rgba(0,0,0,0.6) 0%, transparent 100%)',
+                        display: 'flex', alignItems: 'center', gap: 0.8
+                    }}>
+                        <CheckCircle sx={{ fontSize: 16, color: '#69F0AE' }} />
+                        <Typography sx={{ color: 'white', fontWeight: 700, fontSize: '0.78rem', flex: 1 }}>{label}</Typography>
+                        {onPreview && (
+                            <IconButton size="small" onClick={() => onPreview(currentImage)} sx={{ color: 'white', p: 0 }}>
+                                <Visibility sx={{ fontSize: 18 }} />
+                            </IconButton>
+                        )}
+                    </Box>
+                    {/* Bottom action row */}
+                    <Box sx={{
+                        position: 'absolute', bottom: 0, left: 0, right: 0,
+                        display: 'flex',
+                        background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)',
+                        pt: 3,
+                    }}>
+                        <Button
+                            size="small"
+                            onClick={() => setConfirmOpen(true)}
+                            startIcon={<CameraAlt sx={{ fontSize: 15 }} />}
+                            sx={{ flex: 1, color: 'white', textTransform: 'none', fontWeight: 600, fontSize: '0.8rem', py: 1 }}
+                        >
+                            Retake
+                        </Button>
+                        {ALLOW_GALLERY_UPLOAD && (
+                            <>
+                                <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.3)', my: 0.5 }} />
                                 <Button
-                                    variant="outlined" color="primary" onClick={() => fileInputRef.current?.click()}
-                                    startIcon={<PhotoLibrary />} sx={{ borderRadius: 4, textTransform: 'none', px: 3, bgcolor: 'white' }}
+                                    size="small"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    startIcon={<PhotoLibrary sx={{ fontSize: 15 }} />}
+                                    sx={{ flex: 1, color: 'white', textTransform: 'none', fontWeight: 600, fontSize: '0.8rem', py: 1 }}
                                 >
                                     Gallery
                                 </Button>
-                            )}
-                        </Stack>
+                            </>
+                        )}
                     </Box>
-                )}
+                </Box>
+            )}
 
-                {!currentImage && (
-                    <Box sx={{ position: 'absolute', top: 0, right: 0, bgcolor: 'secondary.main', color: 'white', fontSize: 10, px: 1, borderBottomLeftRadius: 8, zIndex: 2 }}>
-                        REQUIRED
-                    </Box>
-                )}
-            </Paper>
+            <input type="file" accept="image/*" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileUpload} />
+            <HTML5CameraDialog open={cameraOpen} onClose={() => setCameraOpen(false)} onCapture={handleCameraCapture} guidanceType={guidanceType} />
 
-            <input
-                type="file" accept="image/*" ref={fileInputRef} style={{ display: 'none' }}
-                onChange={handleFileUpload}
-            />
-
-            <HTML5CameraDialog
-                open={cameraOpen}
-                onClose={() => setCameraOpen(false)}
-                onCapture={handleCameraCapture}
-                guidanceType={guidanceType}
-            />
+            {/* Confirmation Dialog */}
+            <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
+                <DialogTitle>Open Camera?</DialogTitle>
+                <DialogContent>
+                    <DialogContentText>
+                        Do you want to turn on the camera to capture the {label}?
+                    </DialogContentText>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setConfirmOpen(false)}>Cancel</Button>
+                    <Button onClick={() => { setConfirmOpen(false); setCameraOpen(true); }} variant="contained" autoFocus>
+                        Yes
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </>
     );
 };
 
-// ── AI Scan Tab ─────────────────────────────────────────────────────────────
+// ── AI Scan Tab ───────────────────────────────────────────────────────────────
 const ScanTab = () => {
     const navigate = useNavigate();
-    const [scanning, setScanning] = useState(false);
-    const [scanProgress, setScanProgress] = useState(0);
-    const [scanProgressTarget, setScanProgressTarget] = useState(0);
-    const [scanStatus, setScanStatus] = useState('Ready to search');
+    const { startProcessing, updateProgress, stopProcessing } = useProcessing();
     const [faceImage, setFaceImage] = useState<string | null>(null);
     const [muzzleImage, setMuzzleImage] = useState<string | null>(null);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [notFoundOpen, setNotFoundOpen] = useState(false);
     const [notFoundReason, setNotFoundReason] = useState('');
-    const [notFoundTitle, setNotFoundTitle] = useState('Cow Not Found');
+    const [notFoundTitle, setNotFoundTitle] = useState('');
     const [matchedCow, setMatchedCow] = useState<{
         cowId: string;
-        cow: { name?: string; tagNumber?: string; photos?: { faceProfile?: string; muzzle?: string; }; isDispute?: boolean };
-        confidence: number
+        cow: { name?: string; tagNumber?: string; photos?: { faceProfile?: string; muzzle?: string }; isDispute?: boolean };
+        confidence: number;
     } | null>(null);
 
-    // 5. Memory Cleanup
-    useEffect(() => {
-        return () => {
-            setFaceImage(null);
-            setMuzzleImage(null);
-        };
-    }, []);
+    const [lightboxOpen, setLightboxOpen] = useState(false);
+    const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
-    useEffect(() => {
-        if (!scanning) {
-            setScanProgress(0);
-            setScanProgressTarget(0);
-            setScanStatus('Ready to search');
-            return;
+    const openLightbox = (url: string) => {
+        setLightboxImage(url);
+        setLightboxOpen(true);
+        window.history.pushState({ lightboxOpen: true }, '');
+    };
+
+    const closeLightbox = () => {
+        setLightboxOpen(false);
+        setLightboxImage(null);
+        if (window.history.state?.lightboxOpen) {
+            window.history.back();
         }
+    };
 
-        const timer = window.setInterval(() => {
-            setScanProgress(prev => {
-                if (prev >= scanProgressTarget) return prev;
-                return Math.min(prev + (scanProgressTarget >= 100 ? 5 : 2), scanProgressTarget);
-            });
-        }, 80);
+    useEffect(() => {
+        const handlePopState = () => {
+            if (lightboxOpen) {
+                setLightboxOpen(false);
+                setLightboxImage(null);
+            }
+        };
+        window.addEventListener('popstate', handlePopState);
+        return () => window.removeEventListener('popstate', handlePopState);
+    }, [lightboxOpen]);
 
-        return () => window.clearInterval(timer);
-    }, [scanProgressTarget, scanning]);
-
-    const handleMuzzleCapture = useCallback((img: string) => {
-        setMuzzleImage(img);
-
+    useEffect(() => {
+        return () => { setFaceImage(null); setMuzzleImage(null); };
     }, []);
 
     const handleSearch = async () => {
-        if (!muzzleImage) return;
-
-        setScanning(true);
-        setScanStatus('Uploading muzzle photo...');
-        setScanProgress(8);
-        setScanProgressTarget(28);
-
+        if (!muzzleImage || !faceImage) return;
+        const signal = startProcessing('Finding Cattle', 'Uploading biometrics…');
+        updateProgress(15);
+        
         try {
-            const payloadForApi = {
-                faceImage: base64ToFile(faceImage!, 'search_face.jpg'),
-                muzzleImage: base64ToFile(muzzleImage!, 'search_muzzle.jpg')
+            const payload = {
+                faceImage: base64ToFile(faceImage, 'search_face.jpg'),
+                muzzleImage: base64ToFile(muzzleImage, 'search_muzzle.jpg')
             };
-            setScanStatus('Searching registered cattle...');
-            setScanProgressTarget(86);
-            const response = await searchCowAPI(payloadForApi as never);
-            setScanStatus('Finalizing result...');
-            setScanProgressTarget(100);
-
+            
+            await new Promise(r => window.setTimeout(r, 600)); // UX delay for realism
+            updateProgress(45, 'Matching against database…');
+            
+            const response = await searchCowAPI(payload as never, signal);
+            
+            updateProgress(85, 'Finalizing…');
+            await new Promise(r => window.setTimeout(r, 500));
+            updateProgress(100, 'Complete');
+            await new Promise(r => window.setTimeout(r, 300));
+            
             if (response.success && response.data.cowId) {
-                await new Promise(resolve => window.setTimeout(resolve, 250));
                 setMatchedCow(response.data);
                 setDialogOpen(true);
             } else {
-                await new Promise(resolve => window.setTimeout(resolve, 250));
-                setNotFoundTitle('Cow Not Found');
+                setNotFoundTitle('No Match Found');
                 setNotFoundReason('No matching cow found in the database.');
                 setNotFoundOpen(true);
             }
         } catch (err: unknown) {
-            setScanStatus('Search could not be completed');
-            setScanProgressTarget(100);
-            await new Promise(resolve => window.setTimeout(resolve, 250));
-
-            const msg = err instanceof Error ? err.message : 'AI Verification failed. Please ensure clear images.';
-
-            let title = 'Verification Failed';
-            let reason = msg;
-            
-            if (msg.toLowerCase().includes('detect a muzzle or face')) {
-                title = 'Detection Failed';
-                reason = 'Could not detect a clear muzzle or face in the provided images. Please ensure the features are clearly visible and retake them.';
-            } else if (msg.toLowerCase().includes('cow not found') || msg.toLowerCase().includes('similarity too low')) {
-                title = 'Cow Not Found';
-                reason = 'No matching cow was found in the database. Ensure the cow is registered.';
-            } else if (msg.toLowerCase().includes('spoofing') || msg.toLowerCase().includes('spoof')) {
-                title = 'Invalid Image';
-                reason = 'The image provided appears to be a spoof or invalid. Please take a live photo.';
-            } else if (msg.toLowerCase().includes('unavailable')) {
-                title = 'Service Unavailable';
-                reason = 'The AI service is currently unavailable. Please try again later.';
-            } else {
-                title = 'Search Error';
+            if (axios.isCancel(err) || (err instanceof Error && err.name === 'CanceledError')) {
+                return; // User canceled the request
             }
-            
-            setNotFoundTitle(title);
-            setNotFoundReason(reason);
-            setNotFoundOpen(true);
-        } finally {
-            setScanning(false);
+            updateProgress(100);
+            await new Promise(r => window.setTimeout(r, 250));
+            const msg = err instanceof Error ? err.message : '';
+            let title = 'Search Failed'; let reason = msg;
+            if (msg.toLowerCase().includes('detect a muzzle')) { title = 'Detection Failed'; reason = 'Could not detect a clear muzzle or face. Please ensure both are well-lit and clearly visible.'; }
+            else if (msg.toLowerCase().includes('cow not found') || msg.toLowerCase().includes('similarity too low')) { title = 'No Match Found'; reason = 'No matching cow found in the database. Ensure the cow is registered.'; }
+            else if (msg.toLowerCase().includes('spoof')) { title = 'Invalid Image'; reason = 'The image appears to be a spoof. Please take a live photo.'; }
+            else if (msg.toLowerCase().includes('unavailable')) { title = 'Service Unavailable'; reason = 'The AI service is temporarily unavailable. Try again later.'; }
+            setNotFoundTitle(title); setNotFoundReason(reason); setNotFoundOpen(true);
+        } finally { 
+            stopProcessing(); 
         }
     };
 
-    return (
-        <Box sx={{ mt: 2 }}>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3, textAlign: 'center' }}>
-                Capture both the muzzle profile and the face profile for strict AI verification. You may reuse the muzzle photo if a separate face photo is not possible.
-            </Typography>
+    const bothCaptured = !!muzzleImage && !!faceImage;
 
-            <Stack spacing={3}>
+    return (
+        <Box>
+            {/* Capture boxes stacked */}
+            <Stack spacing={1.5} sx={{ mb: 1.5 }}>
                 <PhotoCaptureBox
-                    label="Muzzle (Required)"
+                    label="Muzzle Photo"
                     guidanceType="muzzle"
                     currentImage={muzzleImage || undefined}
-                    onCapture={handleMuzzleCapture}
+                    onCapture={setMuzzleImage}
+                    icon={<Fingerprint sx={{ color: '#2E7D32', fontSize: 22 }} />}
+                    onPreview={openLightbox}
                 />
+                <PhotoCaptureBox
+                    label="Face Profile Photo"
+                    guidanceType="face"
+                    currentImage={faceImage || undefined}
+                    onCapture={setFaceImage}
+                    icon={<CameraAlt sx={{ color: '#2E7D32', fontSize: 22 }} />}
+                    onPreview={openLightbox}
+                />
+            </Stack>
 
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    <PhotoCaptureBox
-                        label="Face Profile (Required)"
-                        guidanceType="face"
-                        currentImage={faceImage || undefined}
-                        onCapture={setFaceImage}
-                    />
+            {/* Copy muzzle helper */}
+            {muzzleImage && !faceImage && (
+                <Fade in>
                     <Button
                         size="small"
                         variant="outlined"
-                        color="secondary"
-                        disabled={!muzzleImage}
-                        onClick={() => setFaceImage(muzzleImage as string)}
-                        sx={{ textTransform: 'none', py: 0.5, borderRadius: 2 }}
+                        color="primary"
+                        onClick={() => setFaceImage(muzzleImage)}
+                        sx={{ textTransform: 'none', borderRadius: 2, width: '100%', mb: 1.5, fontSize: '0.78rem' }}
                     >
-                        Copy Muzzle
+                        Use muzzle photo as face profile
                     </Button>
-                </Box>
-            </Stack>
+                </Fade>
+            )}
 
-            {/* Verification Trigger */}
-            <Box sx={{ mt: 4, display: 'flex', justifyContent: 'center' }}>
-                {scanning ? (
-                    <Box sx={{
-                        width: '100%',
-                        maxWidth: 420,
-                        p: 2.5,
-                        borderRadius: 3,
-                        border: '1px solid #E2E8F0',
-                        bgcolor: '#FFFFFF'
-                    }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5, gap: 2 }}>
-                            <Typography variant="subtitle1" fontWeight={800}>
-                                Search in progress
-                            </Typography>
-                            <Typography variant="subtitle1" fontWeight={800} color="secondary.main">
-                                {scanProgress}%
-                            </Typography>
-                        </Box>
-                        <LinearProgress
-                            variant="determinate"
-                            value={scanProgress}
-                            color="secondary"
-                            sx={{
-                                height: 10,
-                                borderRadius: 999,
-                                bgcolor: '#FDE68A55',
-                                '& .MuiLinearProgress-bar': { borderRadius: 999 }
-                            }}
-                        />
-                        <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
-                            {scanStatus}
-                        </Typography>
-                    </Box>
-                ) : (
-                    <Button
-                        variant="contained"
-                        color="secondary"
-                        disabled={!muzzleImage || !faceImage}
-                        onClick={handleSearch}
-                        endIcon={<CheckCircle />}
-                        sx={{ py: 1.5, px: 4, borderRadius: 8, boxShadow: '0 4px 20px rgba(245, 158, 11, 0.4)', fontWeight: 'bold' }}
-                    >
-                        Start Verification
-                    </Button>
-                )}
-            </Box>
+            {/* CTA button */}
+            <Button
+                variant="contained"
+                color="primary"
+                fullWidth
+                disabled={!bothCaptured}
+                onClick={handleSearch}
+                endIcon={<QrCodeScanner />}
+                sx={{
+                    py: 1.6, borderRadius: 3, fontWeight: 'bold', fontSize: '1rem', mt: 1,
+                    boxShadow: bothCaptured ? '0 6px 20px rgba(46, 125, 50, 0.35)' : 'none',
+                    transition: 'box-shadow 0.3s',
+                    textTransform: 'none'
+                }}
+            >
+                {bothCaptured ? 'Verify & Find Cow' : 'Capture Both Photos to Search'}
+            </Button>
 
-            {/* ── Not Found Dialog ───────────────────────────────────── */}
+            {/* Not-found dialog */}
             <Dialog open={notFoundOpen} onClose={() => setNotFoundOpen(false)} fullWidth maxWidth="xs">
                 <DialogContent sx={{ textAlign: 'center', pt: 4, pb: 2 }}>
-                    <Box sx={{ width: 72, height: 72, borderRadius: '50%', bgcolor: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2 }}>
-                        <Typography fontSize={36}>🔍</Typography>
+                    <Box sx={{ width: 68, height: 68, borderRadius: '50%', bgcolor: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2 }}>
+                        <Typography fontSize={32}>🔍</Typography>
                     </Box>
-                    <Typography variant="h6" fontWeight={800} gutterBottom>
-                        {notFoundTitle}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                        {notFoundReason}
-                    </Typography>
+                    <Typography variant="h6" fontWeight={800} gutterBottom>{notFoundTitle}</Typography>
+                    <Typography variant="body2" color="text.secondary">{notFoundReason}</Typography>
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
                         Tip: Ensure the muzzle is clear, well-lit, and closely framed.
                     </Typography>
                 </DialogContent>
                 <DialogActions sx={{ justifyContent: 'center', pb: 3, px: 3, flexDirection: 'column', gap: 1 }}>
-                    <Button
-                        variant="contained" color="error" fullWidth
-                        onClick={() => {
-                            setNotFoundOpen(false);
-                            setFaceImage(null);
-                            setMuzzleImage(null);
-                        }}
-                        sx={{ borderRadius: 6, fontWeight: 'bold', py: 1.2 }}
-                    >
+                    <Button variant="contained" color="error" fullWidth onClick={() => { setNotFoundOpen(false); setFaceImage(null); setMuzzleImage(null); }} sx={{ borderRadius: 3, fontWeight: 'bold', py: 1.2 }}>
                         🔄 Retry with New Photos
                     </Button>
-                    <Button fullWidth onClick={() => setNotFoundOpen(false)} sx={{ borderRadius: 6 }}>
-                        Close
+                    <Button fullWidth onClick={() => setNotFoundOpen(false)} sx={{ borderRadius: 3 }}>Close</Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Match-found dialog */}
+            <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="xs">
+                <DialogContent>
+                    {matchedCow?.cow && (
+                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', pt: 2, gap: 1.5 }}>
+                            <Box sx={{ width: 68, height: 68, borderRadius: '50%', bgcolor: '#E8F5E9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <CheckCircle sx={{ color: '#2E7D32', fontSize: 36 }} />
+                            </Box>
+                            <Typography variant="body2" fontWeight={700} color="primary.main">Match Found</Typography>
+                            <Avatar
+                                src={getImageUrl(matchedCow.cow.photos?.faceProfile) || getImageUrl(matchedCow.cow.photos?.muzzle) || ''}
+                                sx={{ width: 88, height: 88, border: '3px solid #E8F5E9' }}
+                            />
+                            <Typography variant="h6" fontWeight={800}>{matchedCow.cow.name || 'Unnamed Cow'}</Typography>
+                            <Chip label={`Tag #${matchedCow.cow.tagNumber}`} size="small" color="primary" variant="outlined" />
+                            {matchedCow.cow.isDispute && <Chip label="⚠️ Disputed Record" color="error" size="small" sx={{ fontWeight: 'bold' }} />}
+                        </Box>
+                    )}
+                </DialogContent>
+                <DialogActions sx={{ justifyContent: 'center', pb: 3, px: 3, gap: 1 }}>
+                    <Button onClick={() => setDialogOpen(false)} color="inherit" sx={{ flex: 1, borderRadius: 3 }}>Cancel</Button>
+                    <Button
+                        variant="contained" color="primary" sx={{ flex: 2, borderRadius: 3, fontWeight: 'bold', py: 1.2 }}
+                        onClick={() => { setDialogOpen(false); navigate(`/profile/${matchedCow?.cowId}`); }}
+                    >
+                        View Full Profile →
                     </Button>
                 </DialogActions>
             </Dialog>
 
-            {/* ── Match Found Dialog ──────────────────────────────────── */}
-            <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="xs">
-                <DialogTitle sx={{ fontWeight: 'bold', textAlign: 'center' }}>Match Found!</DialogTitle>
-                <DialogContent>
-                    {matchedCow && matchedCow.cow && (
-                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mt: 2 }}>
-                            <Avatar
-                                src={getImageUrl(matchedCow.cow.photos?.faceProfile) || getImageUrl(matchedCow.cow.photos?.muzzle) || ''}
-                                sx={{ width: 80, height: 80, mb: 2 }}
+            {/* Lightbox Dialog */}
+            <Dialog
+                open={lightboxOpen}
+                onClose={closeLightbox}
+                fullScreen
+                PaperProps={{
+                    sx: {
+                        bgcolor: 'rgba(0,0,0,0.9)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                    }
+                }}
+            >
+                <IconButton
+                    onClick={closeLightbox}
+                    sx={{ position: 'absolute', top: 'calc(max(16px, env(safe-area-inset-top)) + 16px)', left: 16, color: 'white', zIndex: 100, bgcolor: 'rgba(0,0,0,0.5)' }}
+                >
+                    <ArrowBack />
+                </IconButton>
+                {lightboxImage && (
+                    <TransformWrapper centerOnInit={true} centerZoomedOut={true}>
+                        <TransformComponent
+                            wrapperStyle={{ width: '100vw', height: '100vh' }}
+                            contentStyle={{ width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        >
+                            <img
+                                src={lightboxImage}
+                                alt="Zoomed"
+                                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
                             />
-                            <Typography variant="h6" fontWeight="bold">
-                                {matchedCow.cow.name || 'Unnamed Cow'}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                                Tag: #{matchedCow.cow.tagNumber}
-                            </Typography>
-                            {matchedCow.cow.isDispute && (
-                                <Chip
-                                    label="⚠️ Disputed Record"
-                                    color="error"
-                                    size="small"
-                                    sx={{ fontWeight: 'bold', px: 1 }}
-                                />
-                            )}
-                        </Box>
-                    )}
-                </DialogContent>
-                <DialogActions sx={{ justifyContent: 'center', pb: 2, px: 3 }}>
-                    <Button onClick={() => setDialogOpen(false)} color="inherit" fullWidth>
-                        Cancel
-                    </Button>
-                    <Button
-                        variant="contained" color="primary" fullWidth
-                        onClick={() => {
-                            setDialogOpen(false);
-                            navigate(`/profile/${matchedCow?.cowId}`);
-                        }}
-                        sx={{ borderRadius: 6, fontWeight: 'bold' }}
-                    >
-                        View Profile
-                    </Button>
-                </DialogActions>
+                        </TransformComponent>
+                    </TransformWrapper>
+                )}
             </Dialog>
         </Box>
     );
 };
 
-// ── Main Component ──────────────────────────────────────────────────────────
-const SearchCow: React.FC = () => {
-    const [tabValue, setTabValue] = useState(0);
+// ── Search-by-ID Tab ──────────────────────────────────────────────────────────
+const SearchTab = () => {
+    const navigate = useNavigate();
+    const [searchTerm, setSearchTerm] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+    const { history, addHistory } = useSearchHistory();
+
+    // Debounce search input
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            setDebouncedSearch(searchTerm);
+            if (searchTerm.trim()) {
+                addHistory(searchTerm);
+            }
+        }, 500);
+        return () => clearTimeout(handler);
+    }, [searchTerm, addHistory]);
+
+    const { data: cowsResponse, isLoading } = useQuery({ 
+        queryKey: ['cows', debouncedSearch], 
+        queryFn: () => getMyCattleAPI({ search: debouncedSearch }) 
+    });
+
+    const filteredCows = cowsResponse?.data || [];
+
+    const commit = useCallback((term: string) => {
+        if (!term.trim()) return;
+        setSearchTerm(term.trim());
+        addHistory(term);
+    }, [addHistory]);
+
+    const clearSearch = () => { setSearchTerm(''); setDebouncedSearch(''); };
+    const hasSearched = debouncedSearch.trim().length > 0;
 
     return (
-        <Container maxWidth="sm" sx={{ pt: 2, pb: 10 }}>
-            <Typography variant="h5" fontWeight={800} sx={{ mb: 2 }}>Find Cattle</Typography>
-            <Paper elevation={0} sx={{ borderBottom: '1px solid #eee' }}>
-                <Tabs value={tabValue} onChange={(_e, v) => setTabValue(v)} variant="fullWidth" indicatorColor="primary" textColor="primary">
-                    <Tab icon={<CameraAlt />} iconPosition="start" label="AI Scan" sx={{ fontWeight: 600 }} />
-                    <Tab icon={<Search />} iconPosition="start" label="Search ID" sx={{ fontWeight: 600 }} />
-                </Tabs>
+        <Box>
+            {/* Search bar */}
+            <Paper elevation={0} sx={{
+                display: 'flex', alignItems: 'center', px: 1.5, py: 0.5,
+                border: '1.5px solid #E2E8F0', borderRadius: 3, mb: 2,
+                transition: 'all 0.2s',
+                '&:focus-within': { borderColor: 'primary.main', boxShadow: '0 0 0 3px rgba(46,125,50,0.12)' }
+            }}>
+                <Search sx={{ color: 'text.disabled', mr: 1 }} />
+                <TextField
+                    fullWidth variant="standard"
+                    placeholder="Tag No, Name or Breed…"
+                    InputProps={{ disableUnderline: true }}
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') commit(searchTerm); }}
+                    sx={{ py: 0.5 }}
+                />
+                {searchTerm
+                    ? <IconButton size="small" onClick={clearSearch}><Close fontSize="small" /></IconButton>
+                    : null
+                }
             </Paper>
-            {tabValue === 0 ? <ScanTab /> : <SearchTab />}
+
+            {/* Recent history chips */}
+            {!hasSearched && history.length > 0 && (
+                <Box sx={{ mb: 2 }}>
+                    <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 1 }}>
+                        <History sx={{ fontSize: 13, color: 'text.disabled' }} />
+                        <Typography variant="caption" color="text.disabled" fontWeight={700} letterSpacing={0.5}>RECENT</Typography>
+                    </Stack>
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                        {history.map(h => (
+                            <Chip key={h} label={h} size="small" variant="outlined" onClick={() => commit(h)}
+                                sx={{ cursor: 'pointer', fontWeight: 600, borderRadius: 2 }} />
+                        ))}
+                    </Stack>
+                </Box>
+            )}
+
+            {/* Results */}
+            {hasSearched && (
+                isLoading ? (
+                    <Stack spacing={1.5}>
+                        {[1, 2].map(i => (
+                            <Paper key={i} elevation={0} sx={{ p: 2, borderRadius: 3, border: '1px solid #eee', display: 'flex', gap: 2 }}>
+                                <Skeleton variant="rounded" width={56} height={56} sx={{ borderRadius: 2 }} />
+                                <Box sx={{ flex: 1 }}>
+                                    <Skeleton variant="text" width="50%" />
+                                    <Skeleton variant="text" width="70%" />
+                                </Box>
+                            </Paper>
+                        ))}
+                    </Stack>
+                ) : (
+                    <Stack spacing={1.5}>
+                        <Typography variant="caption" color="text.disabled" fontWeight={700} letterSpacing={0.5}>
+                            {filteredCows.length} RESULT{filteredCows.length !== 1 ? 'S' : ''}
+                        </Typography>
+                        {filteredCows.length === 0 ? (
+                            <Box sx={{ textAlign: 'center', py: 6 }}>
+                                <Box sx={{ width: 64, height: 64, borderRadius: '50%', bgcolor: '#F5F5F5', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2 }}>
+                                    <Search sx={{ fontSize: 32, color: '#BDBDBD' }} />
+                                </Box>
+                                <Typography variant="body1" fontWeight={700} color="text.secondary">No cattle matched</Typography>
+                                <Typography variant="caption" color="text.disabled">Try the Tag Number, Name, or use AI Scan</Typography>
+                            </Box>
+                        ) : (
+                            filteredCows.map(cow => (
+                                <Paper
+                                    key={cow._id} elevation={0}
+                                    onClick={() => navigate(`/profile/${cow._id}`)}
+                                    sx={{
+                                        p: 1.5, borderRadius: 3, border: '1px solid #F0F0F0',
+                                        display: 'flex', alignItems: 'center', gap: 1.5,
+                                        cursor: 'pointer', transition: 'all 0.18s',
+                                        '&:active': { bgcolor: '#F5F5F5', transform: 'scale(0.98)' }
+                                    }}
+                                >
+                                    <Avatar
+                                        src={getImageUrl(cow.photos?.faceProfile) || getImageUrl(cow.photos?.muzzle) || ''}
+                                        variant="rounded"
+                                        sx={{ width: 56, height: 56, borderRadius: 2, bgcolor: '#E8F5E9' }}
+                                    />
+                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.4 }}>
+                                            <Typography variant="subtitle2" fontWeight={800} noWrap>{cow.name || 'Unnamed'}</Typography>
+                                            <Chip label={cow.currentStatus} size="small" color={getStatusColor(cow.currentStatus)}
+                                                sx={{ height: 18, fontSize: '0.65rem', fontWeight: 700, ml: 1 }} />
+                                        </Box>
+                                        <Stack direction="row" spacing={0.8} alignItems="center">
+                                            <Tag sx={{ fontSize: 12, color: 'text.disabled' }} />
+                                            <Typography variant="caption" color="text.secondary" fontWeight={600}>{cow.tagNumber || '—'}</Typography>
+                                            <Typography variant="caption" color="text.disabled">·</Typography>
+                                            <Typography variant="caption" color="text.secondary">{cow.breed}</Typography>
+                                        </Stack>
+                                    </Box>
+                                    <ArrowForwardIos sx={{ fontSize: 12, color: '#BDBDBD', flexShrink: 0 }} />
+                                </Paper>
+                            ))
+                        )}
+                    </Stack>
+                )
+            )}
+
+            {/* Empty state */}
+            {!hasSearched && history.length === 0 && (
+                <Box sx={{ textAlign: 'center', py: 5 }}>
+                    <Box sx={{ width: 64, height: 64, borderRadius: '50%', bgcolor: '#E8F5E9', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2 }}>
+                        <Tag sx={{ fontSize: 30, color: '#2E7D32' }} />
+                    </Box>
+                    <Typography variant="body1" fontWeight={700} color="text.secondary">Search by ID</Typography>
+                    <Typography variant="caption" color="text.disabled">Enter a tag number, name, or breed above</Typography>
+                </Box>
+            )}
+        </Box>
+    );
+};
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+const SearchCow: React.FC = () => {
+    const [tab, setTab] = useState<'scan' | 'id'>('scan');
+
+    return (
+        <Container maxWidth="sm" sx={{ pt: 2, pb: 12 }}>
+
+            {/* Page header */}
+            <Typography variant="h5" fontWeight={800} color="text.primary" sx={{ mb: 2 }}>
+                Find Any Cattle
+            </Typography>
+
+            {/* Pill switcher */}
+            <Paper elevation={0} sx={{ display: 'flex', p: 0.5, bgcolor: '#F3F4F6', borderRadius: 3, mb: 2, gap: 0.5 }}>
+                {([
+                    { key: 'scan', label: 'AI Scan', icon: <Fingerprint sx={{ fontSize: 18 }} /> },
+                    { key: 'id', label: 'Search ID', icon: <Search sx={{ fontSize: 18 }} /> }
+                ] as { key: 'scan' | 'id'; label: string; icon: React.ReactNode }[]).map(({ key, label, icon }) => (
+                    <Button
+                        key={key}
+                        onClick={() => setTab(key)}
+                        startIcon={icon}
+                        sx={{
+                            flex: 1, borderRadius: 2.5, textTransform: 'none', fontWeight: 700,
+                            py: 1, fontSize: '0.875rem', minHeight: 42,
+                            bgcolor: tab === key ? 'white' : 'transparent',
+                            color: tab === key ? 'primary.main' : 'text.secondary',
+                            boxShadow: tab === key ? '0 2px 8px rgba(0,0,0,0.08)' : 'none',
+                            transition: 'all 0.25s ease',
+                            '&:hover': { bgcolor: tab === key ? 'white' : 'rgba(0,0,0,0.04)' }
+                        }}
+                    >
+                        {label}
+                    </Button>
+                ))}
+            </Paper>
+
+            {tab === 'scan' ? <ScanTab /> : <SearchTab />}
         </Container>
     );
 };
 
 export default SearchCow;
-

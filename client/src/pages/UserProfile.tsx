@@ -4,13 +4,14 @@ import {
     Switch, Divider, Button, TextField, CircularProgress, Alert, MenuItem, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions
 } from '@mui/material';
 import {
-    Person, Settings, Language, Help, Logout, ChevronRight, PhotoCamera
+    Person, Settings, Language, Help, Logout, ChevronRight, PhotoCamera, ArrowBack
 } from '@mui/icons-material';
 import { getUserProfileAPI, updateUserProfileAPI, getStatesAPI, getDistrictsAPI, getBlocksAPI, getVillagesAPI, logoutUserAPI } from '../apis/apis';
 import { Preferences } from '@capacitor/preferences';
 import { useNavigate } from 'react-router-dom';
 import PullToRefresh from 'react-simple-pull-to-refresh';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 
 interface UserLocation {
     state?: string;
@@ -36,6 +37,8 @@ const UserProfile: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [editMode, setEditMode] = useState(false);
     const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
+    const [lightboxOpen, setLightboxOpen] = useState(false);
+    const [lightboxImage, setLightboxImage] = useState<string | null>(null);
     const [formData, setFormData] = useState<Record<string, unknown>>({});
 
     const [states, setStates] = useState<string[]>([]);
@@ -129,6 +132,11 @@ const UserProfile: React.FC = () => {
     useEffect(() => {
         // This relies on standard popstate for back button
         const handlePopState = () => {
+            if (lightboxOpen) {
+                setLightboxOpen(false);
+                setLightboxImage(null);
+                return;
+            }
             if (editMode) {
                 const confirmLeave = window.confirm("You have unsaved changes. Are you sure you want to leave?");
                 if (!confirmLeave) {
@@ -151,7 +159,21 @@ const UserProfile: React.FC = () => {
         return () => {
             window.removeEventListener('popstate', handlePopState);
         };
-    }, [editMode]);
+    }, [editMode, lightboxOpen]);
+
+    const openLightbox = (url: string) => {
+        setLightboxImage(url);
+        setLightboxOpen(true);
+        window.history.pushState({ lightboxOpen: true }, '');
+    };
+
+    const closeLightbox = () => {
+        setLightboxOpen(false);
+        setLightboxImage(null);
+        if (window.history.state?.lightboxOpen) {
+            window.history.back();
+        }
+    };
 
     const handleLogout = () => {
         setLogoutDialogOpen(true);
@@ -245,7 +267,21 @@ const UserProfile: React.FC = () => {
                 <Paper elevation={0} sx={{ p: 3, mb: 3, borderRadius: 2, border: '1px solid #eee' }}>
                     <Box display="flex" alignItems="center" gap={2}>
                         <Box position="relative">
-                            <Avatar src={(formData.profilePicture as string) || (user?.profilePicture as string) || ''} sx={{ width: 80, height: 80, border: '3px solid white', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+                            <Avatar 
+                                src={(formData.profilePicture as string) || (user?.profilePicture as string) || ''} 
+                                onClick={() => {
+                                    const imgSrc = (formData.profilePicture as string) || (user?.profilePicture as string);
+                                    if (imgSrc) {
+                                        openLightbox(imgSrc);
+                                    }
+                                }}
+                                sx={{ 
+                                    width: 80, height: 80, 
+                                    border: '3px solid white', 
+                                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                                    cursor: ((formData.profilePicture as string) || (user?.profilePicture as string)) ? 'pointer' : 'default'
+                                }}
+                            >
                                 {!formData.profilePicture && !user?.profilePicture && <Person fontSize="large" />}
                             </Avatar>
                             {editMode && (
@@ -402,7 +438,7 @@ const UserProfile: React.FC = () => {
                 )}
 
                 <Typography variant="caption" display="block" textAlign="center" color="text.disabled" sx={{ mt: 4 }}>
-                    Ama Gau-Dhana © 2026 Odisha Govt.
+                    Ama Gaudhana © 2026 Odisha Govt.
                 </Typography>
 
                 {/* Logout Confirmation Dialog */}
@@ -427,6 +463,41 @@ const UserProfile: React.FC = () => {
                             Log Out
                         </Button>
                     </DialogActions>
+                </Dialog>
+                {/* Lightbox Dialog */}
+                <Dialog
+                    open={lightboxOpen}
+                    onClose={closeLightbox}
+                    fullScreen
+                    PaperProps={{
+                        sx: {
+                            bgcolor: 'rgba(0,0,0,0.9)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                        }
+                    }}
+                >
+                    <IconButton
+                        onClick={closeLightbox}
+                        sx={{ position: 'absolute', top: 'calc(max(16px, env(safe-area-inset-top)) + 16px)', left: 16, color: 'white', zIndex: 100, bgcolor: 'rgba(0,0,0,0.5)' }}
+                    >
+                        <ArrowBack />
+                    </IconButton>
+                    {lightboxImage && (
+                        <TransformWrapper centerOnInit={true} centerZoomedOut={true}>
+                            <TransformComponent
+                                wrapperStyle={{ width: '100vw', height: '100vh' }}
+                                contentStyle={{ width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            >
+                                <img
+                                    src={lightboxImage}
+                                    alt="Profile Zoomed"
+                                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                                />
+                            </TransformComponent>
+                        </TransformWrapper>
+                    )}
                 </Dialog>
             </Container>
         </PullToRefresh>

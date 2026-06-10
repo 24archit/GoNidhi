@@ -23,10 +23,14 @@ interface CowSummary {
 }
 
 
+// Cache the name in memory so it doesn't flicker during asynchronous fetching on tab switches
+let cachedFarmerName = '';
+
 const Home: React.FC = () => {
     const navigate = useNavigate();
 
-    const [farmerName, setFarmerName] = useState<string>('');
+    // Initialize with cached value so there is no flicker
+    const [farmerName, setFarmerName] = useState<string>(cachedFarmerName);
 
     const { data: cowsResponse, isLoading, refetch, isError } = useQuery({
         queryKey: ['cows'],
@@ -40,8 +44,9 @@ const Home: React.FC = () => {
 
     const cows = cowsResponse?.data || [];
     const isOffline = cowsResponse?.isOffline || false;
+    const stats = cowsResponse?.stats || { totalNonDisputed: 0, totalPregnant: 0, totalDisputed: 0 };
 
-    // Filter out disputed cows for the main herd metrics
+    // Filter out disputed cows for the top 2 recent list display
     const nonDisputedCows = cows.filter((c: CowSummary) => !c.isDispute);
 
     useEffect(() => {
@@ -52,7 +57,10 @@ const Home: React.FC = () => {
                 if (userDataStr) {
                     try {
                         const userData = JSON.parse(userDataStr);
-                        if (userData?.name) setFarmerName(userData.name);
+                        if (userData?.name && userData.name !== cachedFarmerName) {
+                            cachedFarmerName = userData.name;
+                            setFarmerName(userData.name);
+                        }
                     } catch (e) {
                         console.error("Failed to parse user data", e);
                     }
@@ -96,11 +104,11 @@ const Home: React.FC = () => {
                 <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
                     <Box sx={{ flex: 1 }}>
                         <Box onClick={() => navigate('/my-cows')} sx={{ cursor: 'pointer', height: '100%', transition: '0.2s', '&:active': { transform: 'scale(0.98)' } }}>
-                            <StatCard label="Total Cattle" value={nonDisputedCows.length} icon={PetsIcon} color="text.primary" />
+                            <StatCard label="Total Cattle" value={stats.totalNonDisputed} icon={PetsIcon} color="text.primary" />
                         </Box>
                     </Box>
                     <Box sx={{ flex: 1 }}>
-                        <StatCard label="Pregnant" value={nonDisputedCows.filter((c: CowSummary) => c.currentStatus === 'Pregnant').length} icon={FavoriteIcon} color="warning.main" />
+                        <StatCard label="Pregnant" value={stats.totalPregnant} icon={FavoriteIcon} color="warning.main" />
                     </Box>
                 </Stack>
 
@@ -109,7 +117,7 @@ const Home: React.FC = () => {
                         <Box onClick={() => navigate('/disputes')} sx={{ cursor: 'pointer', height: '100%', transition: '0.2s', '&:active': { transform: 'scale(0.98)' } }}>
                             <StatCard 
                                 label="Disputed" 
-                                value={cows.filter((c: CowSummary) => c.isDispute).length} 
+                                value={stats.totalDisputed} 
                                 icon={PetsIcon} 
                                 color="error.main" 
                             />

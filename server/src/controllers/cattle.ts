@@ -13,7 +13,7 @@ interface AuthRequest extends Request {
 
 // In-memory store for recent rejection reasons to inform the frontend without permanently storing failed cows.
 // Entries map cowId -> status ('DUPLICATE', 'SPOOF_DETECTED', etc.)
-const recentRejections = new Map<string, string>();
+const recentRejections = new Map<string, any>();
 const REJECTION_TTL_MS = 10 * 60 * 1000; // Keep in memory for 10 minutes max
 
 // POST /api/cattle -> Register a new cow for a farmer
@@ -151,17 +151,60 @@ export const registerCow = async (req: Request, res: Response) => {
     }
 };
 
-// GET /api/cattle -> Get all cows for the logged-in farmer
+// GET /api/cattle -> Get paginated cows for the logged-in farmer
 export const getMyCattle = async (req: Request, res: Response) => {
     const authReq = req as AuthRequest;
     try {
         if (!authReq.user) return res.status(401).json({ success: false, message: 'Unauthorized' });
 
-        const cattle = await Cattle.find({ farmerId: authReq.user.id }).sort({ createdAt: -1 });
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 20;
+        const search = req.query.search ? String(req.query.search) : '';
+        const skip = (page - 1) * limit;
+
+        const baseQuery: any = {
+            farmerId: authReq.user.id,
+            'aiMetadata.status': { $ne: 'PENDING' }
+        };
+
+        // Parallel stats computation (only needed, but we can compute it on every fetch or just page 1)
+        // To be safe we compute it here. It's fast with indexes.
+        const [totalNonDisputed, totalPregnant, totalDisputed] = await Promise.all([
+            Cattle.countDocuments({ ...baseQuery, isDispute: { $ne: true } }),
+            Cattle.countDocuments({ ...baseQuery, isDispute: { $ne: true }, currentStatus: 'Pregnant' }),
+            Cattle.countDocuments({ ...baseQuery, isDispute: true })
+        ]);
+
+        // Add text search if provided (much faster than regex)
+        const searchQuery = { ...baseQuery };
+        if (search) {
+            searchQuery.$text = { $search: search };
+        }
+
+        // We also need to sort by text score if searching, otherwise sort by newest
+        const sortOptions: any = search 
+            ? { score: { $meta: "textScore" } } 
+            : { createdAt: -1 };
+
+        const cattle = await Cattle.find(searchQuery, search ? { score: { $meta: "textScore" } } : {})
+            .sort(sortOptions)
+            .skip(skip)
+            .limit(limit);
+
+        const totalFiltered = await Cattle.countDocuments(searchQuery);
 
         res.status(200).json({
             success: true,
             count: cattle.length,
+            totalFiltered,
+            totalPages: Math.ceil(totalFiltered / limit),
+            currentPage: page,
+            hasMore: skip + cattle.length < totalFiltered,
+            stats: {
+                totalNonDisputed,
+                totalPregnant,
+                totalDisputed
+            },
             data: cattle
         });
 
@@ -245,6 +288,17 @@ export const getCowProfile = async (req: Request, res: Response) => {
 // POST /api/cattle/search -> Search a cow via DL API
 export const searchCow = async (req: Request, res: Response) => {
     const authReq = req as AuthRequest;
+    
+    // Create an AbortController to cancel the DL API request if the client disconnects
+    const abortController = new AbortController();
+    
+    res.on('close', () => {
+        // If the socket closes before we could send our response, the client disconnected.
+        if (!res.writableEnded) {
+            abortController.abort();
+        }
+    });
+
     try {
         if (!authReq.user) return res.status(401).json({ success: false, message: 'Unauthorized' });
 
@@ -267,6 +321,8 @@ export const searchCow = async (req: Request, res: Response) => {
                 role: authReq.user.role || 'farmer',
                 face_image_oci: faceOci,
                 muzzle_image_oci: muzzleOci
+            }, {
+                signal: abortController.signal
             });
 
             // Wait for the unified DL-API response
@@ -302,6 +358,11 @@ export const searchCow = async (req: Request, res: Response) => {
             });
 
         } catch (dlError: any) {
+            if (axios.isCancel(dlError) || dlError.name === 'AbortError' || dlError.name === 'CanceledError') {
+                console.log('Client disconnected, canceled DL API search request.');
+                // 499 is Client Closed Request. Response might fail to send if socket is closed, but we return anyway.
+                return res.status(499).json({ success: false, message: 'Client Closed Request' });
+            }
             console.error('Error calling DL API search:', dlError?.response?.data || dlError.message);
             const errorDetail = dlError?.response?.data?.detail || 'AI Service unavailable or could not process images.';
             return res.status(404).json({ success: false, message: errorDetail });

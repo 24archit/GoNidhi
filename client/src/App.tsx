@@ -12,6 +12,8 @@ import { queryClient } from './queryClient';
 import PageTransition from './components/PageTransition';
 import { syncManager } from './utils/syncManager';
 import { getServerHealthAPI } from './apis/apis';
+import { ProcessingProvider } from './contexts/ProcessingContext';
+import { GlobalProcessingOverlay } from './components/GlobalProcessingOverlay';
 import { Geolocation } from '@capacitor/geolocation';
 import ocacLogo from '../src/assets/ocac.png';
 import iiitLogo from '../src/assets/iiit.png';
@@ -73,7 +75,7 @@ const LocationGuard = ({ children }: { children: React.ReactNode }) => {
         <ErrorOutline color="error" sx={{ fontSize: 64, mb: 2 }} />
         <Typography variant="h5" fontWeight="bold" gutterBottom>Location Required</Typography>
         <Typography variant="body1" color="text.secondary" mb={4}>
-          Ama Gau-Dhana requires your GPS location to be turned on to verify livestock registration areas. Please enable your Location Services and location permissions to continue using the app.
+          Ama Gaudhana requires your GPS location to be turned on to verify livestock registration areas. Please enable your Location Services and location permissions to continue using the app.
         </Typography>
         <Button variant="contained" onClick={() => window.location.reload()}>Retry</Button>
       </Box>
@@ -84,16 +86,9 @@ const LocationGuard = ({ children }: { children: React.ReactNode }) => {
 };
 
 const AnimatedOutlet = () => {
-  const location = useLocation();
   const outlet = useOutlet();
-
-  return (
-    <AnimatePresence mode="wait">
-      <PageTransition key={location.pathname}>
-        {outlet}
-      </PageTransition>
-    </AnimatePresence>
-  );
+  // Instagram uses instant tab switching. No page slide animations here!
+  return <>{outlet}</>;
 };
 
 const MainLayout = ({ isFirstLaunch, isAuthenticated }: { isFirstLaunch: boolean; isAuthenticated: boolean }) => {
@@ -109,18 +104,19 @@ const MainLayout = ({ isFirstLaunch, isAuthenticated }: { isFirstLaunch: boolean
 
 const AnimatedRoutes: React.FC<{ isFirstLaunch: boolean; isAuthenticated: boolean }> = ({ isFirstLaunch, isAuthenticated }) => {
   const location = useLocation();
-  const isMainRoute = ['/', '/home', '/add-cow', '/search', '/my-cows', '/user-profile', '/offline-sync', '/disputes'].includes(location.pathname) || location.pathname.startsWith('/profile/');
+  // We only animate the Login/Register/Onboarding transitions. Main app is instant.
+  const isAuthRoute = ['/login', '/register', '/onboarding'].includes(location.pathname);
 
   return (
-    <AnimatePresence mode="wait">
-      <Routes location={location} key={isMainRoute ? 'main' : location.pathname}>
-        {/* Onboarding & Registration Routes */}
+    <AnimatePresence mode="popLayout">
+      <Routes location={location} key={isAuthRoute ? location.pathname : 'main-app'}>
+        {/* Auth Routes */}
         <Route path="/onboarding" element={<PageTransition>{isFirstLaunch ? <Onboarding /> : <Navigate to="/" replace />}</PageTransition>} />
         <Route path="/register" element={<PageTransition>{isAuthenticated ? <Navigate to="/" replace /> : <Register />}</PageTransition>} />
         <Route path="/login" element={<PageTransition>{isAuthenticated ? <Navigate to="/" replace /> : <Login />}</PageTransition>} />
 
         {/* Main App Routes (Guarded & Wrapped in Layout) */}
-        <Route element={<PageTransition><MainLayout isFirstLaunch={isFirstLaunch} isAuthenticated={isAuthenticated} /></PageTransition>}>
+        <Route element={<MainLayout isFirstLaunch={isFirstLaunch} isAuthenticated={isAuthenticated} />}>
           <Route path="/" element={<Home />} />
           <Route path="/home" element={<Navigate to="/" replace />} />
           <Route path="/add-cow" element={<AddCow />} />
@@ -222,7 +218,7 @@ const App: React.FC = () => {
                 py: 4,
               }}
             >
-              {/* Ama Gau-Dhana Logo */}
+              {/* Ama Gaudhana Logo */}
               <motion.div
                 animate={{ y: [0, -5, 0] }}
                 transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
@@ -236,7 +232,7 @@ const App: React.FC = () => {
                     mb: 2,
                   }}
                 >
-                  <Box component="img" src="/logo.png" alt="Ama Gau-Dhana"
+                  <Box component="img" src="/logo.png" alt="Ama Gaudhana"
                     sx={{ width: 56, height: 56, objectFit: 'contain', borderRadius: '10px' }} />
                 </Box>
               </motion.div>
@@ -244,7 +240,7 @@ const App: React.FC = () => {
               {/* Brand name */}
               <Typography variant="h4" sx={{ color: 'text.primary', lineHeight: 1 }}>
                 Ama{' '}
-                <Box component="span" sx={{ color: 'primary.main' }}>Gau-Dhana</Box>
+                <Box component="span" sx={{ color: 'primary.main' }}>Gaudhana</Box>
               </Typography>
 
               {/* Govt badge */}
@@ -306,11 +302,14 @@ const App: React.FC = () => {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <Router>
-          <LocationGuard>
-            <AnimatedRoutes isFirstLaunch={isFirstLaunch} isAuthenticated={isAuthenticated} />
-          </LocationGuard>
-        </Router>
+        <ProcessingProvider>
+          <Router>
+            <LocationGuard>
+              <AnimatedRoutes isFirstLaunch={isFirstLaunch} isAuthenticated={isAuthenticated} />
+            </LocationGuard>
+          </Router>
+          <GlobalProcessingOverlay />
+        </ProcessingProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );

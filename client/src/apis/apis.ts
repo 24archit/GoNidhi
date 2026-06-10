@@ -67,60 +67,42 @@ export const getServerHealthAPI = async () => {
 };
 
 /**
- * Fetch all cattle belonging to the logged-in farmer
+ * Fetch all cows belonging to the logged-in farmer
  */
-export const getMyCattleAPI = async () => {
+export const getMyCattleAPI = async ({ pageParam = 1, search = '', limit = 10 } = {}) => {
     try {
         const { value: token } = await Preferences.get({ key: 'jwt_token' });
-        if (!token) throw new Error('Not authenticated');
-
-        const response = await axios.get(`${API_BASE}/api/cattle`, {
-            headers: { Authorization: `Bearer ${token}` }
-        });
-
-        if (!response.data.success) {
-            throw new Error(response.data.message || 'Failed to fetch cattle');
-        }
-
-        // Cache the result for offline fallback
-        const data = { ...response.data, isOffline: false };
-        await Preferences.set({ key: 'cached_my_cattle', value: JSON.stringify(data) });
-
-        return data;
-    } catch (error) {
-        // Fallback to cache on network failure
         const { value: cached } = await Preferences.get({ key: 'cached_my_cattle' });
-        if (cached) {
-            console.warn('Network failed, falling back to cached cattle data.');
-            const cachedData = JSON.parse(cached);
-            return { ...cachedData, isOffline: true };
-        }
 
-
-        if (axios.isAxiosError(error) && error.response?.data?.message) {
-            throw new Error(error.response.data.message);
-        }
-        throw error;
-    }
-};
-
-/**
- * Fetch a specific cow profile by its MongoDB ID
- */
-export const getCowProfileAPI = async (cowId: string) => {
-    try {
-        const { value: token } = await Preferences.get({ key: 'jwt_token' });
         if (!token) throw new Error('Not authenticated');
 
-        const response = await axios.get(`${API_BASE}/api/cattle/${cowId}`, {
-            headers: { Authorization: `Bearer ${token}` }
-        });
+        try {
+            const response = await axios.get(`${API_BASE}/api/cattle`, {
+                headers: { Authorization: `Bearer ${token}` },
+                params: { page: pageParam, limit, search }
+            });
 
-        if (!response.data.success) {
-            throw new Error(response.data.message || 'Failed to fetch cow profile');
+            if (!response.data.success) {
+                throw new Error(response.data.message || 'Failed to fetch cattle');
+            }
+
+            // Update cache only on page 1 load without search
+            if (pageParam === 1 && !search) {
+                await Preferences.set({ key: 'cached_my_cattle', value: JSON.stringify(response.data) });
+            }
+
+            return response.data;
+        } catch (error) {
+            // Fallback to cache if offline
+            if (!navigator.onLine && cached) {
+                console.warn('Network failed, falling back to cached cattle data.');
+                const cachedData = JSON.parse(cached);
+                // Return cached data but wrap it to match paginated structure
+                return { ...cachedData, isOffline: true, data: search ? [] : cachedData.data };
+            }
+            throw error;
         }
 
-        return response.data;
     } catch (error) {
         if (axios.isAxiosError(error) && error.response?.data?.message) {
             throw new Error(error.response.data.message);
@@ -155,9 +137,38 @@ export const deleteCowAPI = async (cowId: string) => {
 };
 
 /**
+ * Fetch a single cow profile by ID
+ */
+export const getCowProfileAPI = async (cowId: string) => {
+    const { value: token } = await Preferences.get({ key: 'jwt_token' });
+    if (!token) throw new Error('Not authenticated');
+
+    try {
+        const response = await axios.get(`${API_BASE}/api/cattle/${cowId}`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        if (!response.data.success) {
+            throw new Error(response.data.message || 'Failed to fetch cow profile');
+        }
+
+        return response.data;
+    } catch (error) {
+        if (axios.isAxiosError(error)) {
+            const err = new Error(error.response?.data?.message || 'Server Error') as any;
+            err.responseStatus = error.response?.status;
+            err.isRejected = error.response?.data?.isRejected;
+            err.status = error.response?.data?.status;
+            throw err;
+        }
+        throw error;
+    }
+};
+
+/**
  * Register a new cow to the farmer's herd
  */
-export const registerCowAPI = async (cowData: Record<string, any>) => {
+export const registerCowAPI = async (cowData: Record<string, any>, signal?: AbortSignal) => {
     try {
         const { value: token } = await Preferences.get({ key: 'jwt_token' });
         if (!token) throw new Error('Not authenticated');
@@ -171,7 +182,8 @@ export const registerCowAPI = async (cowData: Record<string, any>) => {
         const response = await axios.post(`${API_BASE}/api/cattle`, formData, {
             headers: {
                 Authorization: `Bearer ${token}`,
-            }
+            },
+            signal
         });
 
         if (!response.data.success) {
@@ -220,7 +232,7 @@ export const loginFarmerAPI = async (phone: string) => {
 /**
  * Search for a cow using AI (Face & Muzzle)
  */
-export const searchCowAPI = async (searchData: { faceImage: string; muzzleImage: string }) => {
+export const searchCowAPI = async (searchData: { faceImage: string; muzzleImage: string }, signal?: AbortSignal) => {
     try {
         const { value: token } = await Preferences.get({ key: 'jwt_token' });
         if (!token) throw new Error('Not authenticated');
@@ -233,7 +245,8 @@ export const searchCowAPI = async (searchData: { faceImage: string; muzzleImage:
         const response = await axios.post(`${API_BASE}/api/cattle/search`, formData, {
             headers: {
                 Authorization: `Bearer ${token}`,
-            }
+            },
+            signal
         });
 
         if (!response.data.success) {

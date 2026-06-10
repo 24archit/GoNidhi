@@ -119,11 +119,11 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             {/* 2. TOP APP BAR */}
             <AppBar position="static" elevation={0} sx={{ zIndex: 1100 }}>
                 <Toolbar>
-                    <IconButton edge="start" color="inherit" sx={{ mr: 2 }} onClick={() => setDrawerOpen(true)}>
+                    <IconButton edge="start" color="inherit" sx={{ mr: { xs: 0.5, sm: 2 } }} onClick={() => setDrawerOpen(true)}>
                         <MenuIcon />
                     </IconButton>
 
-                    <Stack direction="row" alignItems="center" sx={{ flexGrow: 1, gap: 1.5 }}>
+                    <Stack direction="row" alignItems="center" sx={{ flexGrow: 1, gap: { xs: 1, sm: 1.5 }, minWidth: 0 }}>
                         <Box sx={{
                             bgcolor: 'white',
                             borderRadius: '50%',
@@ -131,38 +131,47 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            width: 44,
-                            height: 44
+                            width: { xs: 36, sm: 44 },
+                            height: { xs: 36, sm: 44 },
+                            flexShrink: 0
                         }}>
                             <Box
                                 component="img"
                                 src="/logo.png"
-                                alt="Ama Gau-Dhana Logo"
-                                sx={{ width: 40, height: 40, objectFit: 'contain' }}
+                                alt="Ama Gaudhana Logo"
+                                sx={{ width: '100%', height: '100%', objectFit: 'contain' }}
                             />
                         </Box>
-                        <Stack direction="column">
-                            <Typography variant="h6" sx={{ lineHeight: 1.1 }}>Ama Gaudhana</Typography>
-                            <Typography variant="caption" sx={{ opacity: 0.9, fontWeight: 500, fontSize: '0.65rem', mt: 0.5, bgcolor: 'rgba(255,255,255,0.2)', px: 0.8, py: 0.2, borderRadius: 1, display: 'inline-block', width: 'fit-content' }}>
-                                GOVT. OF ODISHA
-                            </Typography>
-                        </Stack>
+                        <Typography 
+                            variant="h6" 
+                            sx={{ 
+                                lineHeight: 1.1, 
+                                fontSize: { xs: '1.1rem', sm: '1.25rem' },
+                                fontWeight: 'bold',
+                                minWidth: 0,
+                                wordWrap: 'break-word'
+                            }}
+                        >
+                            Ama Gaudhana
+                        </Typography>
                     </Stack>
 
-                    <IconButton color="inherit" sx={{ mr: 1 }} onClick={() => handleNavClick('/offline-sync')}>
-                        <Badge badgeContent={pendingCount} color="error">
-                            <CloudSyncIcon />
-                        </Badge>
-                    </IconButton>
+                    <Stack direction="row" alignItems="center" spacing={{ xs: 0, sm: 1 }} sx={{ flexShrink: 0 }}>
+                        <IconButton color="inherit" onClick={() => handleNavClick('/offline-sync')}>
+                            <Badge badgeContent={pendingCount} color="error">
+                                <CloudSyncIcon />
+                            </Badge>
+                        </IconButton>
 
-                    <IconButton color="inherit" onClick={() => handleNavClick('/user-profile')} sx={{ p: 0, ml: 1 }}>
-                        <Avatar
-                            src={(profileData?.user?.profilePicture as string) || ''}
-                            sx={{ width: 32, height: 32, border: '2px solid rgba(255,255,255,0.8)' }}
-                        >
-                            {!profileData?.user?.profilePicture && <ProfileIcon fontSize="small" />}
-                        </Avatar>
-                    </IconButton>
+                        <IconButton color="inherit" onClick={() => handleNavClick('/user-profile')} sx={{ p: 0.5, ml: { xs: 0, sm: 1 } }}>
+                            <Avatar
+                                src={(profileData?.user?.profilePicture as string) || ''}
+                                sx={{ width: 32, height: 32, border: '2px solid rgba(255,255,255,0.8)' }}
+                            >
+                                {!profileData?.user?.profilePicture && <ProfileIcon fontSize="small" />}
+                            </Avatar>
+                        </IconButton>
+                    </Stack>
                 </Toolbar >
             </AppBar >
 
@@ -175,7 +184,6 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                         </Box>
                         <Box>
                             <Typography variant="h6" fontWeight="bold" sx={{ lineHeight: 1.1 }}>Ama Gaudhana</Typography>
-                            <Typography variant="caption" sx={{ opacity: 0.9 }}>GOVT. OF ODISHA</Typography>
                         </Box>
                     </Box>
                     <List sx={{ pt: 1 }}>

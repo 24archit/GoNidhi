@@ -2,12 +2,12 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.ocac.amagaudhana',
-  appName: 'Ama Gau-Dhana',
+  appName: 'Ama Gaudhana',
   webDir: 'dist',
-  // server: {
-  //   url: 'http://localhost:5173',
-  //   cleartext: true
-  // }
+  server: {
+    url: 'http://localhost:5173',
+    cleartext: true
+  }
 };
 
 export default config;

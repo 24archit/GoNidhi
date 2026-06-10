@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     Container, Box, TextField, InputAdornment, IconButton, Typography,
-    Paper, Avatar, Chip, Stack, Button
+    Paper, Avatar, Chip, Stack, Button, CircularProgress
 } from '@mui/material';
 import {
     Search, FilterList, ArrowForwardIos, Add
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import PullToRefresh from 'react-simple-pull-to-refresh';
 import { getMyCattleAPI } from '../apis/apis';
 import { getImageUrl } from '../utils/imageUtils';
@@ -26,25 +26,52 @@ interface CowListSummary {
 const MyCows: React.FC = () => {
     const navigate = useNavigate();
     const [searchTerm, setSearchTerm] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
 
-    const { data: cowsResponse, isLoading, refetch } = useQuery({
-        queryKey: ['cows'],
-        queryFn: getMyCattleAPI,
+    // Debounce search input
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            setDebouncedSearch(searchTerm);
+        }, 500);
+        return () => clearTimeout(handler);
+    }, [searchTerm]);
+
+    const { 
+        data: cowsResponse, 
+        isLoading, 
+        isFetchingNextPage,
+        hasNextPage,
+        fetchNextPage,
+        refetch 
+    } = useInfiniteQuery({
+        queryKey: ['cows', debouncedSearch],
+        queryFn: ({ pageParam = 1 }) => getMyCattleAPI({ pageParam, search: debouncedSearch }),
+        initialPageParam: 1,
+        getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.currentPage + 1 : undefined,
     });
 
     const handleRefresh = async () => {
         await refetch();
     };
 
-    const cows: CowListSummary[] = cowsResponse?.data || [];
+    // Flatten pages into a single array
+    const cows: CowListSummary[] = cowsResponse?.pages.flatMap(page => page.data) || [];
     
     // Only show successful registrations that are not disputed
     const nonDisputedCows = cows.filter((cow) => !cow.isDispute);
 
-    const filteredCows = nonDisputedCows.filter(cow =>
-        cow.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        cow.tagNumber?.includes(searchTerm)
-    );
+    // Infinite scroll observer
+    const observer = useRef<IntersectionObserver | null>(null);
+    const lastCowElementRef = useCallback((node: HTMLDivElement | null) => {
+        if (isLoading || isFetchingNextPage) return;
+        if (observer.current) observer.current.disconnect();
+        observer.current = new IntersectionObserver(entries => {
+            if (entries[0].isIntersecting && hasNextPage) {
+                fetchNextPage();
+            }
+        });
+        if (node) observer.current.observe(node);
+    }, [isLoading, isFetchingNextPage, hasNextPage, fetchNextPage]);
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -56,6 +83,9 @@ const MyCows: React.FC = () => {
         }
     };
 
+    // Use stats from the first page to get total count
+    const totalCount = cowsResponse?.pages[0]?.stats?.totalNonDisputed || nonDisputedCows.length;
+
     return (
         <PullToRefresh onRefresh={handleRefresh} pullingContent=""
             maxPullDownDistance={100} resistance={2} backgroundColor="#F4F7F4">
@@ -65,7 +95,7 @@ const MyCows: React.FC = () => {
                         <Typography variant="h5" fontWeight={800} color="primary.main">
                             My Herd
                         </Typography>
-                        <Chip label={`Total: ${cows.length}`} size="small" color="primary" variant="outlined" sx={{ fontWeight: 'bold' }} />
+                        <Chip label={`Total: ${totalCount}`} size="small" color="primary" variant="outlined" sx={{ fontWeight: 'bold' }} />
                     </Box>
                     <Button
                         variant="outlined"
@@ -104,49 +134,61 @@ const MyCows: React.FC = () => {
 
                 {/* Cow List */}
                 <Stack spacing={2}>
-                    {isLoading ? <Typography align="center" mt={4}>Loading cattle...</Typography> : filteredCows.map((cow) => (
-                        <Paper
-                            key={cow._id}
-                            elevation={0}
-                            onClick={() => navigate(`/profile/${cow._id}`)}
-                            sx={{
-                                p: 2, borderRadius: 3, border: '1px solid #eee',
-                                display: 'flex', alignItems: 'center', gap: 2,
-                                cursor: 'pointer',
-                                transition: 'all 0.2s ease',
-                                '&:active': { bgcolor: '#f5f5f5', transform: 'scale(0.98)' }
-                            }}
-                        >
-                            <Avatar src={getImageUrl(cow.photos?.faceProfile) || getImageUrl(cow.photos?.muzzle) || 'https://placehold.co/100'} variant="rounded" sx={{ width: 64, height: 64, borderRadius: 3 }} />
+                    {isLoading && <Typography align="center" mt={4}>Loading cattle...</Typography>}
+                    
+                    {nonDisputedCows.map((cow, index) => {
+                        const isLastItem = nonDisputedCows.length === index + 1;
+                        return (
+                            <Paper
+                                key={cow._id}
+                                ref={isLastItem ? lastCowElementRef : null}
+                                elevation={0}
+                                onClick={() => navigate(`/profile/${cow._id}`)}
+                                sx={{
+                                    p: 2, borderRadius: 3, border: '1px solid #eee',
+                                    display: 'flex', alignItems: 'center', gap: 2,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                    '&:active': { bgcolor: '#f5f5f5', transform: 'scale(0.98)' }
+                                }}
+                            >
+                                <Avatar src={getImageUrl(cow.photos?.faceProfile) || getImageUrl(cow.photos?.muzzle) || 'https://placehold.co/100'} variant="rounded" sx={{ width: 64, height: 64, borderRadius: 3 }} />
 
-                            <Box sx={{ flexGrow: 1 }}>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
-                                    <Typography variant="subtitle1" fontWeight="bold">
-                                        {cow.name}
-                                    </Typography>
-                                    <Chip
-                                        label={cow.currentStatus}
-                                        size="small"
-                                        color={getStatusColor(cow.currentStatus) as "default" | "primary" | "secondary" | "error" | "info" | "success" | "warning"}
-                                        sx={{ height: 20, fontSize: '0.7rem', fontWeight: 600 }}
-                                    />
+                                <Box sx={{ flexGrow: 1 }}>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                                        <Typography variant="subtitle1" fontWeight="bold">
+                                            {cow.name}
+                                        </Typography>
+                                        <Chip
+                                            label={cow.currentStatus}
+                                            size="small"
+                                            color={getStatusColor(cow.currentStatus) as "default" | "primary" | "secondary" | "error" | "info" | "success" | "warning"}
+                                            sx={{ height: 20, fontSize: '0.7rem', fontWeight: 600 }}
+                                        />
+                                    </Box>
+
+                                    <Stack direction="row" spacing={1} alignItems="center">
+                                        <Typography variant="caption" sx={{ bgcolor: 'grey.100', px: 0.8, py: 0.2, borderRadius: 1 }}>
+                                            #{cow.tagNumber}
+                                        </Typography>
+                                        <Typography variant="caption" color="text.secondary">
+                                            {cow.breed} • {cow.ageMonths ? `${cow.ageMonths}m` : 'Age unknown'}
+                                        </Typography>
+                                    </Stack>
                                 </Box>
 
-                                <Stack direction="row" spacing={1} alignItems="center">
-                                    <Typography variant="caption" sx={{ bgcolor: 'grey.100', px: 0.8, py: 0.2, borderRadius: 1 }}>
-                                        #{cow.tagNumber}
-                                    </Typography>
-                                    <Typography variant="caption" color="text.secondary">
-                                        {cow.breed} • {cow.ageMonths ? `${cow.ageMonths}m` : 'Age unknown'}
-                                    </Typography>
-                                </Stack>
-                            </Box>
+                                <ArrowForwardIos fontSize="small" sx={{ color: '#ccc', fontSize: 14 }} />
+                            </Paper>
+                        );
+                    })}
 
-                            <ArrowForwardIos fontSize="small" sx={{ color: '#ccc', fontSize: 14 }} />
-                        </Paper>
-                    ))}
+                    {isFetchingNextPage && (
+                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                            <CircularProgress size={24} />
+                        </Box>
+                    )}
 
-                    {filteredCows.length === 0 && (
+                    {!isLoading && nonDisputedCows.length === 0 && (
                         <Box sx={{ textAlign: 'center', py: 4, opacity: 0.6 }}>
                             <Typography variant="body1">No cattle found.</Typography>
                         </Box>
@@ -159,3 +201,4 @@ const MyCows: React.FC = () => {
 };
 
 export default MyCows;
+
