@@ -288,7 +288,7 @@ export const deleteCattle = async (req: Request, res: Response) => {
         }
 
         // Background cleanup of cloud resources
-            await cleanupCowCloudResources(deletedCattle);
+            cleanupCowCloudResources(deletedCattle);
 
         res.status(200).json({ success: true, message: 'Cattle deleted successfully' });
     } catch (error: any) {
