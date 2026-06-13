@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
 import { Grid, Paper, Typography, Box, CircularProgress } from '@mui/material';
 import axios from 'axios';
 import { People, Pets, Gavel, Warning } from '@mui/icons-material';
+import { useQuery } from '@tanstack/react-query';
 
 import { API_BASE } from '@ama-gau-dhana/shared';
 import { useAuth } from '../contexts/AuthContext';
@@ -15,24 +15,17 @@ interface SystemStats {
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const [stats, setStats] = useState<SystemStats | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const response = await axios.get(`${API_BASE}/api/admin/analytics/stats`);
-        if (response.data.success) {
-          setStats(response.data.data);
-        }
-      } catch (error) {
-        console.error("Failed to fetch stats", error);
-      } finally {
-        setLoading(false);
+  
+  const { data: stats, isLoading: loading } = useQuery({
+    queryKey: ['dashboardStats'],
+    queryFn: async () => {
+      const response = await axios.get(`${API_BASE}/api/admin/analytics/stats`);
+      if (response.data.success) {
+        return response.data.data as SystemStats;
       }
-    };
-    fetchStats();
-  }, []);
+      throw new Error("Failed to fetch stats");
+    }
+  });
 
   if (loading) return <Box sx={{ display: "flex", justifyContent: "center", mt: 4 }}><CircularProgress /></Box>;
 

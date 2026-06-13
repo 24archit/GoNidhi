@@ -7,6 +7,7 @@ import {
   ArrowBack as ArrowBackIcon, VerifiedUser as VerifiedUserIcon, Warning as WarningIcon, Pets as PetsIcon, LocalOffer as LocalOfferIcon, Person as PersonIcon, LocationOn as LocationOnIcon, Delete as DeleteIcon, Edit as EditIcon
 } from '@mui/icons-material';
 import axios from 'axios';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { API_BASE } from '@ama-gau-dhana/shared';
 
@@ -57,8 +58,7 @@ interface CattleProfileData {
 export default function CattleProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [cattle, setCattle] = useState<CattleProfileData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [telemetryOpen, setTelemetryOpen] = useState(false);
   const [telemetryLog, setTelemetryLog] = useState<any>(null);
   const [loadingTelemetry, setLoadingTelemetry] = useState(false);
@@ -131,7 +131,7 @@ export default function CattleProfile() {
       
       const res = await axios.put(`${API_BASE}/api/admin/cattle/${id}`, payload);
       if (res.data.success) {
-        setCattle(res.data.data);
+        queryClient.invalidateQueries({ queryKey: ['cattle'] });
         setEditOpen(false);
       }
     } catch (err) {
@@ -145,6 +145,7 @@ export default function CattleProfile() {
   const handleDelete = async () => {
     try {
       await axios.delete(`${API_BASE}/api/admin/cattle/${id}`);
+      queryClient.invalidateQueries({ queryKey: ['cattle'] });
       setDeleteConfirmOpen(false);
       navigate('/cattle');
     } catch (err: any) {
@@ -179,21 +180,17 @@ export default function CattleProfile() {
     }
   };
 
-  useEffect(() => {
-    const fetchCattle = async () => {
-      try {
-        const res = await axios.get(`${API_BASE}/api/admin/cattle/${id}`);
-        if (res.data.success) {
-          setCattle(res.data.data);
-        }
-      } catch (err) {
-        console.error("Failed to fetch cattle profile", err);
-      } finally {
-        setLoading(false);
+  const { data: cattle, isLoading: loading } = useQuery({
+    queryKey: ['cattle', id],
+    queryFn: async () => {
+      const res = await axios.get(`${API_BASE}/api/admin/cattle/${id}`);
+      if (res.data.success) {
+        return res.data.data as CattleProfileData;
       }
-    };
-    fetchCattle();
-  }, [id]);
+      throw new Error("Failed to fetch cattle profile");
+    },
+    enabled: !!id,
+  });
 
   if (loading) {
     return (

@@ -6,6 +6,8 @@ export interface IAiLog extends Document {
     success: boolean;
     matchStatus?: string;
     cowId?: string;
+    farmerId?: string;
+    matchedCowId?: string;
     inferenceTimeMs: number;
     imageF?: string; // Optional field for base64 images if needed in future
     muzzleConfM?: number;
@@ -31,8 +33,6 @@ export interface IAiLog extends Document {
     muzzleCropUrl?: string;
     faceCropUrl?: string;
     matchedCowName?: string;
-    muzzleThreshold?: number;
-    spoofThreshold?: number;
     tradMorphology?: {
         beadCount?: number;
         avgArea?: number;
@@ -55,6 +55,8 @@ const AiLogSchema = new Schema<IAiLog>({
     success: { type: Boolean, required: true },
     matchStatus: { type: String },
     cowId: { type: String },
+    farmerId: { type: String },
+    matchedCowId: { type: String },
     inferenceTimeMs: { type: Number, required: true },
     imageF: { type: String, select: false },
     muzzleConfM: { type: Number },
@@ -79,8 +81,6 @@ const AiLogSchema = new Schema<IAiLog>({
     muzzleCropUrl: { type: String },
     faceCropUrl: { type: String },
     matchedCowName: { type: String },
-    muzzleThreshold: { type: Number },
-    spoofThreshold: { type: Number },
     tradMorphology: {
         beadCount: { type: Number },
         avgArea: { type: Number },

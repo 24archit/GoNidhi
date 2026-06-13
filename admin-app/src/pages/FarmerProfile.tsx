@@ -7,6 +7,7 @@ import {
   ArrowBack as ArrowBackIcon, Phone as PhoneIcon, Email as EmailIcon, LocationOn as LocationOnIcon, VerifiedUser as VerifiedUserIcon, CheckCircle as CheckCircleIcon, Warning as WarningIcon, Timeline as TimelineIcon, LocalPolice as AadharIcon, Edit as EditIcon
 } from '@mui/icons-material';
 import axios from 'axios';
+import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 import { API_BASE } from '@ama-gau-dhana/shared';
 
@@ -37,56 +38,46 @@ interface FarmerProfileData {
 export default function FarmerProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [farmer, setFarmer] = useState<FarmerProfileData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [cowsList, setCowsList] = useState<CowRecord[]>([]);
-  const [cattlePage, setCattlePage] = useState(1);
-  const [hasMoreCattle, setHasMoreCattle] = useState(false);
-  const [loadingCattle, setLoadingCattle] = useState(false);
+  const queryClient = useQueryClient();
 
   const [editOpen, setEditOpen] = useState(false);
   const [editData, setEditData] = useState<any>({});
   const [initialEditData, setInitialEditData] = useState<any>({});
   const [savingEdit, setSavingEdit] = useState(false);
 
-  useEffect(() => {
-    const fetchFarmer = async () => {
-      try {
-        const res = await axios.get(`${API_BASE}/api/admin/users/farmers/${id}`);
-        if (res.data.success) {
-          setFarmer(res.data.data);
-        }
-      } catch (err) {
-        console.error("Failed to fetch farmer profile", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchFarmer();
-  }, [id]);
+  const { data: farmer, isLoading: loading } = useQuery({
+    queryKey: ['farmer', id],
+    queryFn: async () => {
+      const res = await axios.get(`${API_BASE}/api/admin/users/farmers/${id}`);
+      if (res.data.success) return res.data.data as FarmerProfileData;
+      throw new Error("Failed to fetch farmer");
+    },
+    enabled: !!id,
+  });
 
-  useEffect(() => {
-    const fetchCattle = async () => {
-      if (!id) return;
-      setLoadingCattle(true);
-      try {
-        const res = await axios.get(`${API_BASE}/api/admin/users/farmers/${id}/cattle?page=${cattlePage}&limit=10`);
-        if (res.data.success) {
-          if (cattlePage === 1) {
-            setCowsList(res.data.data);
-          } else {
-            setCowsList(prev => [...prev, ...res.data.data]);
-          }
-          setHasMoreCattle(res.data.currentPage < res.data.totalPages);
-        }
-      } catch (err) {
-        console.error("Failed to fetch farmer cattle", err);
-      } finally {
-        setLoadingCattle(false);
+  const {
+    data: cattleData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage: loadingCattle
+  } = useInfiniteQuery({
+    queryKey: ['farmer-cattle', id],
+    queryFn: async ({ pageParam = 1 }) => {
+      const res = await axios.get(`${API_BASE}/api/admin/users/farmers/${id}/cattle?page=${pageParam}&limit=10`);
+      return res.data;
+    },
+    getNextPageParam: (lastPage) => {
+      if (lastPage.currentPage < lastPage.totalPages) {
+        return lastPage.currentPage + 1;
       }
-    };
-    fetchCattle();
-  }, [id, cattlePage]);
+      return undefined;
+    },
+    initialPageParam: 1,
+    enabled: !!id,
+  });
+
+  const cowsList = cattleData?.pages.flatMap(page => page.data) || [];
+  const hasMoreCattle = !!hasNextPage;
 
   const isModified = JSON.stringify(editData) !== JSON.stringify(initialEditData);
 
@@ -141,7 +132,7 @@ export default function FarmerProfile() {
       const payload = { ...editData };
       const res = await axios.put(`${API_BASE}/api/admin/users/farmers/${id}`, payload);
       if (res.data.success) {
-        setFarmer(res.data.data);
+        queryClient.invalidateQueries({ queryKey: ['farmer', id] });
         setEditOpen(false);
       }
     } catch (err) {
@@ -361,7 +352,7 @@ export default function FarmerProfile() {
             <Box sx={{ mt: 3, textAlign: 'center' }}>
               <Button 
                 variant="outlined" 
-                onClick={() => setCattlePage(p => p + 1)}
+                onClick={() => fetchNextPage()}
                 disabled={loadingCattle}
               >
                 {loadingCattle ? <CircularProgress size={24} /> : 'Load More Cattle'}

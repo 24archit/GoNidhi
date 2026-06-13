@@ -46,11 +46,20 @@ export const getAiLogs = async (req: Request, res: Response) => {
         }
 
         if (statuses.length > 0 && !statuses.includes('All')) {
-            query.matchStatus = { $in: statuses };
+            // Expand statuses to handle common casing to maintain fast exact-match index queries
+            const expandedStatuses = statuses.flatMap(s => [s, s.toLowerCase(), s.toUpperCase(), s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()]);
+            query.matchStatus = { $in: expandedStatuses };
         }
 
         if (types.length > 0) {
-            query.endpoint = { $in: types };
+            // Expand types to handle variations (register/registration) without using slow Regex
+            const expandedTypes = types.flatMap(t => {
+                const lower = t.toLowerCase();
+                if (lower.includes('regist')) return ['register', 'registration', 'REGISTER', 'REGISTRATION', 'Register', 'Registration'];
+                if (lower.includes('search')) return ['search', 'SEARCH', 'Search'];
+                return [t, t.toLowerCase(), t.toUpperCase()];
+            });
+            query.endpoint = { $in: expandedTypes };
         }
 
         if (year) {

@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  Box, Typography, Paper, Grid, Chip, Button, Collapse, FormGroup,
-  FormControlLabel, Checkbox, Divider, Skeleton, InputAdornment,
-  TextField, IconButton, Badge, Tooltip, FormControl, Select, MenuItem
+  Box, Typography, Paper, Grid, Chip, Button, Collapse, FormGroup, IconButton,
+  FormControlLabel, Checkbox, TextField, InputAdornment, Badge, Tooltip, FormControl, Select, MenuItem,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination, Avatar
 } from '@mui/material';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -16,25 +16,28 @@ import CircularProgress from '@mui/material/CircularProgress';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE } from '@ama-gau-dhana/shared';
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 // ─── Status helpers ────────────────────────────────────────────────────────────
-const STATUS_META: Record<string, { dot: string; label: string }> = {
-  SUCCESS:        { dot: '#22c55e', label: 'Success' },
-  FOUND:          { dot: '#22c55e', label: 'Found' },
-  NOT_FOUND:      { dot: '#ef4444', label: 'Not Found' },
-  FAILED:         { dot: '#ef4444', label: 'Failed' },
-  SPOOF_DETECTED: { dot: '#ef4444', label: 'Spoof' },
-  DISPUTE:        { dot: '#f59e0b', label: 'Dispute' },
-  DUPLICATE:      { dot: '#f59e0b', label: 'Duplicate' },
-  NOT_A_COW:      { dot: '#8b5cf6', label: 'Not a Cow' },
+const getStatusStyle = (status: string) => {
+  const s = (status || '').toUpperCase();
+  if (s === 'SUCCESS' || s === 'FOUND') return { bg: '#e8f5e9', color: '#2e7d32', border: '#a5d6a7', label: s.replace(/_/g, ' ') };
+  if (['NOT_FOUND', 'FAILED', 'SPOOF_DETECTED'].includes(s)) return { bg: '#ffebee', color: '#c62828', border: '#ef9a9a', label: s.replace(/_/g, ' ') };
+  if (s === 'NOT_A_COW') return { bg: '#f3e5f5', color: '#6a1b9a', border: '#ce93d8', label: 'NOT A COW' };
+  if (['DUPLICATE', 'DISPUTE'].includes(s)) return { bg: '#fff3e0', color: '#e65100', border: '#ffcc02', label: s.replace(/_/g, ' ') };
+  return { bg: '#f5f5f5', color: '#616161', border: '#e0e0e0', label: s || 'N/A' };
 };
 
-const getMeta = (status: string) =>
-  STATUS_META[status?.toUpperCase()] ?? { dot: '#9ca3af', label: status || '—' };
-
 const confidenceColor = (v: number) =>
-  v >= 0.85 ? '#22c55e' : v >= 0.6 ? '#f59e0b' : '#ef4444';
+  v >= 0.85 ? 'success.main' : v >= 0.6 ? 'warning.main' : 'error.main';
+
+const formatEndpoint = (ep?: string) => {
+  if (!ep) return 'N/A';
+  const lower = ep.toLowerCase();
+  if (lower.includes('search')) return 'SEARCH';
+  if (lower.includes('register') || lower.includes('registration')) return 'REGISTER';
+  return 'UNKNOWN';
+};
 
 // ─── Inline correctness toggle ─────────────────────────────────────────────────
 function CorrectnessToggle({ value, onChange }: { value: boolean | null | undefined; onChange: (v: boolean | null) => void }) {
@@ -49,170 +52,103 @@ function CorrectnessToggle({ value, onChange }: { value: boolean | null | undefi
         <IconButton
           size="small"
           onClick={e => handleClick(e, true)}
+          color={value === true ? 'success' : 'default'}
           sx={{
-            width: 26, height: 26, borderRadius: 1,
-            bgcolor: value === true ? '#dcfce7' : 'transparent',
-            color: value === true ? '#16a34a' : '#9ca3af',
+            width: 28, height: 28, borderRadius: 1,
+            bgcolor: value === true ? '#e8f5e9' : 'transparent',
             border: '1px solid',
-            borderColor: value === true ? '#bbf7d0' : 'transparent',
-            '&:hover': { bgcolor: '#f0fdf4', color: '#16a34a', borderColor: '#bbf7d0' },
-            transition: 'all 0.15s',
+            borderColor: value === true ? '#a5d6a7' : 'transparent',
           }}
         >
-          <ThumbUpIcon sx={{ fontSize: 13 }} />
+          <ThumbUpIcon sx={{ fontSize: 16 }} />
         </IconButton>
       </Tooltip>
       <Tooltip title="Mark incorrect">
         <IconButton
           size="small"
           onClick={e => handleClick(e, false)}
+          color={value === false ? 'error' : 'default'}
           sx={{
-            width: 26, height: 26, borderRadius: 1,
-            bgcolor: value === false ? '#fee2e2' : 'transparent',
-            color: value === false ? '#dc2626' : '#9ca3af',
+            width: 28, height: 28, borderRadius: 1,
+            bgcolor: value === false ? '#ffebee' : 'transparent',
             border: '1px solid',
-            borderColor: value === false ? '#fecaca' : 'transparent',
-            '&:hover': { bgcolor: '#fef2f2', color: '#dc2626', borderColor: '#fecaca' },
-            transition: 'all 0.15s',
+            borderColor: value === false ? '#ef9a9a' : 'transparent',
           }}
         >
-          <ThumbDownIcon sx={{ fontSize: 13 }} />
+          <ThumbDownIcon sx={{ fontSize: 16 }} />
         </IconButton>
       </Tooltip>
     </Box>
   );
 }
 
-// ─── Single row ────────────────────────────────────────────────────────────────
 function LogRow({ log, onCorrectnessChange, onClick }: {
   log: any;
   onCorrectnessChange: (id: string, val: boolean | null) => void;
   onClick: () => void;
 }) {
-  const status = log.matchStatus || (log.success ? 'SUCCESS' : 'FAILED');
-  const meta = getMeta(status);
+  const statusRaw = log.matchStatus || (log.success ? 'SUCCESS' : 'FAILED');
+  const style = getStatusStyle(statusRaw);
   const confidence = log.ensembleScore ?? log.xgbMappedScore ?? null;
   const ts = new Date(log.timestamp);
 
   return (
-    <Box
+    <TableRow
+      hover
       onClick={onClick}
       sx={{
-        display: 'grid',
-        gridTemplateColumns: { xs: '1fr', sm: '28px 56px 1fr auto auto auto auto' },
-        alignItems: 'center',
-        gap: { xs: 1, sm: 2 },
-        px: 2,
-        py: 1.5,
         cursor: 'pointer',
-        borderBottom: '1px solid',
-        borderColor: 'divider',
-        transition: 'background 0.12s',
-        '&:hover': { bgcolor: 'rgba(0,0,0,0.025)' },
-        '&:last-child': { borderBottom: 'none' },
+        '&:hover': { bgcolor: 'rgba(28, 57, 187, 0.04)' }
       }}
     >
-      {/* Status dot */}
-      <Box sx={{ display: { xs: 'none', sm: 'flex' }, justifyContent: 'center' }}>
-        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: meta.dot, flexShrink: 0 }} />
-      </Box>
-
-      {/* Thumbnail */}
-      <Box sx={{ display: { xs: 'none', sm: 'block' }, flexShrink: 0 }}>
-        {log.muzzleImgUrl || log.faceImgUrl ? (
-          <Box
-            component="img"
+      <TableCell>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Avatar
             src={log.muzzleImgUrl || log.faceImgUrl}
-            alt=""
-            sx={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 1, border: '1px solid', borderColor: 'divider', display: 'block' }}
-          />
-        ) : (
-          <Box sx={{ width: 40, height: 40, borderRadius: 1, bgcolor: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Typography sx={{ fontSize: 18, lineHeight: 1 }}>🐄</Typography>
-          </Box>
-        )}
-      </Box>
-
-      {/* Main info */}
-      <Box sx={{ minWidth: 0 }}>
-        {/* Mobile: show status dot inline */}
-        <Box sx={{ display: { xs: 'flex', sm: 'none' }, alignItems: 'center', gap: 0.75, mb: 0.25 }}>
-          <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: meta.dot, flexShrink: 0 }} />
-          <Typography variant="caption" sx={{ color: meta.dot, fontWeight: 600, fontSize: '0.7rem' }}>{meta.label}</Typography>
-        </Box>
-
-        <Typography
-          variant="body2"
-          sx={{ fontWeight: 600, color: 'text.primary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.82rem' }}
-        >
-          {log.matchedCowName || log.cowName || <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No match</span>}
-        </Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.2 }}>
-          <Typography variant="caption" sx={{ color: '#9ca3af', fontSize: '0.72rem' }}>
-            {ts.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-            {' '}
-            {ts.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-          </Typography>
-          <Typography variant="caption" sx={{ color: '#9ca3af', fontSize: '0.72rem' }}>·</Typography>
-          <Typography variant="caption" sx={{ color: '#9ca3af', fontSize: '0.72rem', fontFamily: 'monospace' }}>
-            {log.inferenceTimeMs}ms
-          </Typography>
-          {/* Mobile: show endpoint */}
-          <Box sx={{ display: { xs: 'block', sm: 'none' } }}>
-            <Typography variant="caption" sx={{ color: '#9ca3af', fontSize: '0.72rem' }}>· {log.endpoint?.toUpperCase()}</Typography>
+            sx={{ width: 48, height: 48, bgcolor: 'primary.light', boxShadow: 1 }}
+            variant="rounded"
+          >
+            🐄
+          </Avatar>
+          <Box>
+            <Typography variant="body1" sx={{ fontWeight: 600, color: 'text.primary' }}>
+              {ts.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+            </Typography>
+            <Typography variant="caption" sx={{ color: 'text.secondary', bgcolor: 'rgba(0,0,0,0.05)', px: 1, py: 0.2, borderRadius: 1, display: 'inline-block', mt: 0.5 }}>
+              Inference: {(log.inferenceTimeMs / 1000).toFixed(2)}s
+            </Typography>
           </Box>
         </Box>
-      </Box>
-
-      {/* Status badge — desktop */}
-      <Box sx={{ display: { xs: 'none', sm: 'block' }, flexShrink: 0 }}>
-        <Typography
-          variant="caption"
-          sx={{
-            fontWeight: 600, fontSize: '0.7rem',
-            color: meta.dot,
-            bgcolor: `${meta.dot}18`,
-            px: 1, py: 0.4,
-            borderRadius: 1,
-            whiteSpace: 'nowrap',
-            display: 'block',
-          }}
-        >
-          {meta.label}
-        </Typography>
-      </Box>
-
-      {/* Endpoint — desktop */}
-      <Box sx={{ display: { xs: 'none', sm: 'block' }, flexShrink: 0 }}>
-        <Typography variant="caption" sx={{ color: '#6b7280', fontFamily: 'monospace', fontSize: '0.72rem' }}>
-          {log.endpoint?.toUpperCase() || '—'}
-        </Typography>
-      </Box>
-
-      {/* Confidence */}
-      <Box sx={{ flexShrink: 0, minWidth: 38, textAlign: 'right', display: { xs: 'none', sm: 'block' } }}>
+      </TableCell>
+      <TableCell>
+        <Chip
+          label={style.label}
+          size="small"
+          sx={{ bgcolor: style.bg, color: style.color, border: `1px solid ${style.border}`, fontWeight: 'bold' }}
+        />
+      </TableCell>
+      <TableCell>
+        <Chip label={formatEndpoint(log.endpoint)} size="small" variant="outlined" color="primary" sx={{ fontWeight: 600 }} />
+      </TableCell>
+      <TableCell>
         {confidence !== null ? (
-          <Typography variant="caption" sx={{ fontWeight: 700, fontSize: '0.78rem', color: confidenceColor(confidence), fontFamily: 'monospace' }}>
+          <Typography variant="body2" sx={{ fontWeight: 700, color: confidenceColor(confidence), fontFamily: 'monospace' }}>
             {(confidence * 100).toFixed(0)}%
           </Typography>
         ) : (
-          <Typography variant="caption" sx={{ color: '#d1d5db' }}><RemoveIcon sx={{ fontSize: 12 }} /></Typography>
+          <Typography variant="body2" color="text.disabled"><RemoveIcon sx={{ fontSize: 16 }} /></Typography>
         )}
-      </Box>
-
-      {/* AI correctness toggle */}
-      <Box sx={{ flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+      </TableCell>
+      <TableCell onClick={e => e.stopPropagation()}>
         <CorrectnessToggle
           value={log.isAiOutcomeCorrect}
           onChange={val => onCorrectnessChange(log._id, val)}
         />
-      </Box>
-
-      {/* Chevron */}
-      <Box sx={{ display: { xs: 'none', sm: 'flex' }, flexShrink: 0 }}>
-        <ChevronRightIcon sx={{ fontSize: 16, color: '#d1d5db' }} />
-      </Box>
-    </Box>
+      </TableCell>
+      <TableCell>
+        <ChevronRightIcon color="action" />
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -220,13 +156,13 @@ function LogRow({ log, onCorrectnessChange, onClick }: {
 function StatTile({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <Box>
-      <Typography variant="caption" sx={{ color: '#6b7280', fontWeight: 500, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+      <Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         {label}
       </Typography>
-      <Typography sx={{ fontSize: '1.5rem', fontWeight: 700, color: 'text.primary', lineHeight: 1.15, mt: 0.25 }}>
+      <Typography variant="h4" sx={{ fontWeight: 700, color: 'text.primary', mt: 0.5 }}>
         {value}
       </Typography>
-      {sub && <Typography variant="caption" sx={{ color: '#9ca3af', fontSize: '0.7rem' }}>{sub}</Typography>}
+      {sub && <Typography variant="body2" color="text.secondary">{sub}</Typography>}
     </Box>
   );
 }
@@ -256,24 +192,16 @@ export default function Analytics() {
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
   const [selectedYear, setSelectedYear] = useState('');
   const [appliedFilters, setAppliedFilters] = useState({ statuses: [] as string[], types: [] as string[], year: '' });
-  const [searchQuery, setSearchQuery] = useState('');
 
-  const rowsPerPage = 25;
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
 
-  const {
-    data,
-    fetchNextPage,
-    hasNextPage,
-    isFetching,
-    isFetchingNextPage,
-    refetch,
-    isRefetching
-  } = useInfiniteQuery({
-    queryKey: ['analytics-logs', appliedFilters],
-    queryFn: async ({ pageParam = 1 }) => {
+  const { data, isLoading, isFetching, refetch, isRefetching } = useQuery({
+    queryKey: ['analytics-logs', appliedFilters, page, rowsPerPage],
+    queryFn: async () => {
       const res = await axios.get(`${API_BASE}/api/admin/analytics/ai-logs`, {
         params: {
-          page: pageParam,
+          page: page + 1,
           limit: rowsPerPage,
           statuses: appliedFilters.statuses.join(',') || undefined,
           types: appliedFilters.types.join(',') || undefined,
@@ -282,45 +210,33 @@ export default function Analytics() {
       });
       return res.data;
     },
-    getNextPageParam: (lastPage, allPages) => {
-      const totalLoaded = allPages.reduce((acc, page) => acc + (page.data?.length || 0), 0);
-      if (lastPage.success && totalLoaded < lastPage.total) {
-        return allPages.length + 1;
-      }
-      return undefined;
-    },
-    initialPageParam: 1,
     staleTime: 180000
   });
 
-  const logs = data?.pages.flatMap(page => page.data) || [];
-  const total = data?.pages[0]?.total || 0;
-  const metrics = data?.pages[0]?.metrics || { avgTime: 0, successRate: 0, totalInferences: 0 };
-  const isLoading = isFetching && !isFetchingNextPage;
+  const logs = data?.data || [];
+  const total = data?.total || 0;
+  const metrics = data?.metrics || { avgTime: 0, successRate: 0, totalInferences: 0 };
 
   // Optimistic correctness update in list
   const handleCorrectnessChange = async (id: string, val: boolean | null) => {
-    queryClient.setQueryData(['analytics-logs', appliedFilters], (oldData: any) => {
+    queryClient.setQueryData(['analytics-logs', appliedFilters, page, rowsPerPage], (oldData: any) => {
       if (!oldData) return oldData;
       return {
         ...oldData,
-        pages: oldData.pages.map((page: any) => ({
-          ...page,
-          data: page.data.map((log: any) => log._id === id ? { ...log, isAiOutcomeCorrect: val } : log)
-        }))
+        data: oldData.data.map((log: any) => log._id === id ? { ...log, isAiOutcomeCorrect: val } : log)
       };
     });
 
     try {
       await axios.put(`${API_BASE}/api/admin/analytics/ai-logs/${id}`, { isAiOutcomeCorrect: val });
     } catch {
-      // revert by invalidating cache
       queryClient.invalidateQueries({ queryKey: ['analytics-logs'] });
     }
   };
 
   const handleApplyFilters = () => {
     setAppliedFilters({ statuses: selectedStatuses, types: selectedTypes, year: selectedYear });
+    setPage(0);
     setShowFilters(false);
   };
 
@@ -335,53 +251,63 @@ export default function Analytics() {
       const res = await axios.get(`${API_BASE}/api/admin/analytics/ai-logs/export?${params}`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const a = document.createElement('a');
-      a.href = url; a.download = 'ai_insights_export.csv';
+      a.href = url; a.download = 'ai_logs_export.csv';
       document.body.appendChild(a); a.click(); a.remove();
     } catch { alert('Failed to export.'); }
     finally { setIsExporting(false); }
   };
 
-  const filteredLogs = searchQuery.trim()
-    ? logs.filter(l =>
-        [l.matchedCowName, l.cowName, l.endpoint, l.matchStatus]
-          .some(v => (v || '').toLowerCase().includes(searchQuery.toLowerCase()))
-      )
-    : logs;
-
-  const hasMore = hasNextPage;
   const activeFilterCount = appliedFilters.statuses.length + appliedFilters.types.length + (appliedFilters.year ? 1 : 0);
 
   return (
-    <Box sx={{ width: '100%', overflowX: 'hidden' }}>
-
-      {/* ── Page header ── */}
+    <Box>
       <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2, mb: 3 }}>
         <Box>
-          <Typography sx={{ fontSize: '1.15rem', fontWeight: 700, color: 'text.primary', letterSpacing: '-0.01em' }}>
+          <Typography variant="h4" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
             AI Inference Logs
           </Typography>
-          <Typography variant="caption" sx={{ color: '#9ca3af' }}>
-            Biometric identification audit trail
-          </Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1 }}>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          <Badge badgeContent={activeFilterCount || null} color="primary" sx={{ '& .MuiBadge-badge': { right: 5, top: 5 } }}>
+            <Button
+              size="small"
+              variant={showFilters ? 'contained' : 'outlined'}
+              startIcon={<FilterListIcon />}
+              onClick={() => setShowFilters(!showFilters)}
+              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
+            >
+              Filters
+            </Button>
+          </Badge>
+          {activeFilterCount > 0 && (
+            <Button
+              size="small"
+              variant="text"
+              color="error"
+              sx={{ textTransform: 'none', fontWeight: 600 }}
+              onClick={() => setAppliedFilters({ statuses: [], types: [], year: '' })}
+            >
+              Clear
+            </Button>
+          )}
           <Button
             size="small"
             variant="outlined"
-            startIcon={isRefetching ? <CircularProgress size={15} /> : <RefreshIcon sx={{ fontSize: 15 }} />}
-            onClick={() => queryClient.resetQueries({ queryKey: ['analytics-logs', appliedFilters] })}
-            disabled={isFetching || isRefetching || isExporting}
-            sx={{ borderRadius: 1.5, textTransform: 'none', fontSize: '0.8rem', borderColor: 'divider', color: 'text.secondary', '&:hover': { borderColor: 'text.primary', color: 'text.primary' } }}
+            startIcon={isRefetching ? <CircularProgress size={20} /> : <RefreshIcon />}
+            onClick={() => { queryClient.resetQueries({ queryKey: ['analytics-logs', appliedFilters] }); refetch(); }}
+            disabled={isLoading || isRefetching || isExporting}
+            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
           >
             {isRefetching ? 'Refreshing…' : 'Refresh'}
           </Button>
           <Button
             size="small"
-            variant="outlined"
-            startIcon={<DownloadIcon sx={{ fontSize: 15 }} />}
+            variant="contained"
+            color="primary"
+            startIcon={<DownloadIcon />}
             onClick={handleExport}
             disabled={isExporting}
-            sx={{ borderRadius: 1.5, textTransform: 'none', fontSize: '0.8rem', borderColor: 'divider', color: 'text.secondary', '&:hover': { borderColor: 'text.primary', color: 'text.primary' } }}
+            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
           >
             {isExporting ? 'Exporting…' : 'Export'}
           </Button>
@@ -389,14 +315,11 @@ export default function Analytics() {
       </Box>
 
       {/* ── Stat strip ── */}
-      <Paper
-        variant="outlined"
-        sx={{ mb: 3, borderRadius: 2, overflow: 'hidden', boxShadow: 'none' }}
-      >
+      <Paper variant="outlined" sx={{ mb: 3, borderRadius: 2, overflow: 'hidden' }}>
         <Grid container>
           {[
             { label: 'Total Inferences', value: String(metrics.totalInferences || total) },
-            { label: 'Avg Inference Time', value: `${Math.round(metrics.avgTime)} ms` },
+            { label: 'Avg Inference Time', value: `${(metrics.avgTime / 1000).toFixed(2)}s` },
             { label: 'Success Rate', value: `${(metrics.successRate * 100).toFixed(1)}%` },
           ].map((s, i, arr) => (
             <Grid key={s.label} size={{ xs: 12, sm: 4 }}>
@@ -408,111 +331,60 @@ export default function Analytics() {
         </Grid>
       </Paper>
 
-      {/* ── Toolbar ── */}
-      <Box sx={{ display: 'flex', gap: 1, mb: showFilters ? 1.5 : 2, flexWrap: 'wrap' }}>
-        <TextField
-          placeholder="Search records…"
-          size="small"
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-          sx={{
-            flex: 1, minWidth: 160,
-            '& .MuiOutlinedInput-root': {
-              borderRadius: 1.5, fontSize: '0.82rem',
-              '& fieldset': { borderColor: 'divider' },
-            }
-          }}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon sx={{ fontSize: 16, color: '#9ca3af' }} />
-              </InputAdornment>
-            )
-          }}
-        />
-        <Badge badgeContent={activeFilterCount || null} color="primary" sx={{ '& .MuiBadge-badge': { fontSize: '0.65rem', minWidth: 16, height: 16 } }}>
-          <Button
-            size="small"
-            variant={showFilters ? 'contained' : 'outlined'}
-            startIcon={<FilterListIcon sx={{ fontSize: 15 }} />}
-            onClick={() => setShowFilters(!showFilters)}
-            sx={{ borderRadius: 1.5, textTransform: 'none', fontSize: '0.8rem', borderColor: 'divider', color: showFilters ? undefined : 'text.secondary', whiteSpace: 'nowrap' }}
-          >
-            Filter
-          </Button>
-        </Badge>
-        {activeFilterCount > 0 && (
-          <Button
-            size="small"
-            variant="text"
-            sx={{ color: '#9ca3af', textTransform: 'none', fontSize: '0.8rem', '&:hover': { color: 'error.main' } }}
-            onClick={() => setAppliedFilters({ statuses: [], types: [], year: '' })}
-          >
-            Clear
-          </Button>
-        )}
-      </Box>
-
       {/* ── Filter panel ── */}
       <Collapse in={showFilters}>
-        <Paper variant="outlined" sx={{ mb: 2, p: 2, borderRadius: 1.5, boxShadow: 'none' }}>
-          <Grid container spacing={2}>
+        <Paper variant="outlined" sx={{ mb: 3, p: 3, borderRadius: 2, bgcolor: 'background.paper' }}>
+          <Grid container spacing={4}>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', fontSize: '0.68rem', letterSpacing: '0.04em', display: 'block', mb: 1 }}>
+              <Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: 'uppercase', mb: 1.5 }}>
                 Match Status
               </Typography>
-              <Grid container spacing={0}>
+              <Grid container spacing={1}>
                 {ALL_STATUSES.map(s => (
                   <Grid key={s.value} size={{ xs: 6 }}>
                     <FormControlLabel
                       control={
-                        <Checkbox size="small" checked={selectedStatuses.includes(s.value)}
+                        <Checkbox checked={selectedStatuses.includes(s.value)}
                           onChange={e => setSelectedStatuses(prev => e.target.checked ? [...prev, s.value] : prev.filter(x => x !== s.value))}
-                          sx={{ py: 0.4, '& .MuiSvgIcon-root': { fontSize: 16 } }}
                         />
                       }
-                      label={<Typography sx={{ fontSize: '0.8rem' }}>{s.label}</Typography>}
-                      sx={{ m: 0 }}
+                      label={<Typography variant="body2">{s.label}</Typography>}
                     />
                   </Grid>
                 ))}
               </Grid>
             </Grid>
             <Grid size={{ xs: 6, sm: 3 }}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', fontSize: '0.68rem', letterSpacing: '0.04em', display: 'block', mb: 1 }}>
+              <Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: 'uppercase', mb: 1.5 }}>
                 Type
               </Typography>
               <FormGroup>
                 {ALL_TYPES.map(t => (
                   <FormControlLabel key={t.value}
-                    control={<Checkbox size="small" checked={selectedTypes.includes(t.value)}
-                      onChange={e => setSelectedTypes(prev => e.target.checked ? [...prev, t.value] : prev.filter(x => x !== t.value))}
-                      sx={{ py: 0.4, '& .MuiSvgIcon-root': { fontSize: 16 } }} />}
-                    label={<Typography sx={{ fontSize: '0.8rem' }}>{t.label}</Typography>}
-                    sx={{ m: 0 }}
+                    control={<Checkbox checked={selectedTypes.includes(t.value)}
+                      onChange={e => setSelectedTypes(prev => e.target.checked ? [...prev, t.value] : prev.filter(x => x !== t.value))} />}
+                    label={<Typography variant="body2">{t.label}</Typography>}
                   />
                 ))}
               </FormGroup>
             </Grid>
             <Grid size={{ xs: 6, sm: 3 }}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', fontSize: '0.68rem', letterSpacing: '0.04em', display: 'block', mb: 1 }}>
+              <Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: 'uppercase', mb: 1.5 }}>
                 Year
               </Typography>
-              <FormControl size="small" fullWidth sx={{ mb: 1.5 }}>
-                <Select value={selectedYear} displayEmpty onChange={e => setSelectedYear(e.target.value)} sx={{ borderRadius: 1.5, fontSize: '0.82rem' }}>
-                  <MenuItem value=""><em>All</em></MenuItem>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <Select value={selectedYear} displayEmpty onChange={e => setSelectedYear(e.target.value)} sx={{ borderRadius: 2 }}>
+                  <MenuItem value=""><em>All Years</em></MenuItem>
                   <MenuItem value="2024">2024</MenuItem>
                   <MenuItem value="2025">2025</MenuItem>
                   <MenuItem value="2026">2026</MenuItem>
                 </Select>
               </FormControl>
               <Box sx={{ display: 'flex', gap: 1 }}>
-                <Button size="small" variant="text" sx={{ color: '#9ca3af', textTransform: 'none', fontSize: '0.78rem' }}
-                  onClick={() => { setSelectedStatuses([]); setSelectedTypes([]); setSelectedYear(''); }}>
+                <Button variant="outlined" color="inherit" fullWidth onClick={() => { setSelectedStatuses([]); setSelectedTypes([]); setSelectedYear(''); }}>
                   Reset
                 </Button>
-                <Button size="small" variant="contained" onClick={handleApplyFilters}
-                  sx={{ borderRadius: 1.5, textTransform: 'none', fontSize: '0.78rem', flex: 1 }}>
+                <Button variant="contained" color="primary" fullWidth onClick={handleApplyFilters}>
                   Apply
                 </Button>
               </Box>
@@ -522,68 +394,61 @@ export default function Analytics() {
       </Collapse>
 
       {/* ── Table ── */}
-      <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden', boxShadow: 'none' }}>
-        {/* Column headers — desktop only */}
-        <Box sx={{
-          display: { xs: 'none', sm: 'grid' },
-          gridTemplateColumns: '28px 56px 1fr auto auto auto auto',
-          gap: 2, px: 2, py: 1,
-          bgcolor: '#fafafa',
-          borderBottom: '1px solid', borderColor: 'divider',
-        }}>
-          {['', '', 'Record', 'Status', 'Type', 'Conf.', 'AI Correct?'].map((h, i) => (
-            <Typography key={i} variant="caption" sx={{ color: '#6b7280', fontWeight: 600, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              {h}
-            </Typography>
-          ))}
-        </Box>
+      <Paper sx={{ width: '100%', overflow: 'hidden', borderRadius: 3, boxShadow: '0 8px 32px rgba(0,0,0,0.05)', border: '1px solid rgba(0,0,0,0.05)' }}>
+        <TableContainer sx={{ maxHeight: 'calc(100vh - 250px)' }}>
+          <Table stickyHeader>
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ bgcolor: '#f8f9fa', fontWeight: 'bold' }}>Record</TableCell>
+                <TableCell sx={{ bgcolor: '#f8f9fa', fontWeight: 'bold' }}>Status</TableCell>
+                <TableCell sx={{ bgcolor: '#f8f9fa', fontWeight: 'bold' }}>Type</TableCell>
+                <TableCell sx={{ bgcolor: '#f8f9fa', fontWeight: 'bold' }}>Confidence</TableCell>
+                <TableCell sx={{ bgcolor: '#f8f9fa', fontWeight: 'bold' }}>AI Correct?</TableCell>
+                <TableCell sx={{ bgcolor: '#f8f9fa', fontWeight: 'bold' }}></TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {logs.map((log: any) => (
+                <LogRow
+                  key={log._id}
+                  log={log}
+                  onCorrectnessChange={handleCorrectnessChange}
+                  onClick={() => navigate(`/analytics/${log._id}`)}
+                />
+              ))}
 
-        {/* Rows */}
-        {isLoading && logs.length === 0
-          ? Array.from({ length: 8 }).map((_, i) => (
-              <Box key={i} sx={{ px: 2, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
-                <Skeleton variant="text" width="60%" height={18} />
-                <Skeleton variant="text" width="35%" height={14} />
-              </Box>
-            ))
-          : filteredLogs.map(log => (
-              <LogRow
-                key={log._id}
-                log={log}
-                onCorrectnessChange={handleCorrectnessChange}
-                onClick={() => navigate(`/analytics/${log._id}`)}
-              />
-            ))
-        }
+              {logs.length === 0 && !isLoading && (
+                <TableRow>
+                  <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                    <Typography variant="body1" color="textSecondary">No records match your criteria.</Typography>
+                  </TableCell>
+                </TableRow>
+              )}
 
-        {/* Empty state */}
-        {!isLoading && filteredLogs.length === 0 && (
-          <Box sx={{ py: 8, textAlign: 'center' }}>
-            <Typography sx={{ color: '#9ca3af', fontSize: '0.875rem' }}>No records match your criteria</Typography>
-          </Box>
-        )}
+              {isLoading && (
+                <TableRow>
+                  <TableCell colSpan={6} align="center" sx={{ py: 8 }}>
+                    <CircularProgress size={40} />
+                    <Typography variant="body2" sx={{ mt: 1 }} color="textSecondary">Loading analytics logs...</Typography>
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
 
-        {/* Footer: count + load more */}
-        <Box sx={{
-          px: 2, py: 1.25, borderTop: '1px solid', borderColor: 'divider',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: '#fafafa'
-        }}>
-          <Typography variant="caption" sx={{ color: '#9ca3af', fontSize: '0.72rem' }}>
-            {filteredLogs.length} of {total} records
-          </Typography>
-          {hasMore && !searchQuery && (
-            <Button
-              size="small"
-              variant="text"
-              disabled={isFetchingNextPage}
-              onClick={() => fetchNextPage()}
-              sx={{ color: 'primary.main', textTransform: 'none', fontSize: '0.78rem' }}
-            >
-              {isFetchingNextPage ? 'Loading…' : `Load ${Math.min(rowsPerPage, total - logs.length)} more`}
-            </Button>
-          )}
-        </Box>
+        <TablePagination
+          rowsPerPageOptions={[10, 25, 50, 100]}
+          component="div"
+          count={total}
+          rowsPerPage={rowsPerPage}
+          page={page}
+          onPageChange={(_, p) => setPage(p)}
+          onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+          sx={{ borderTop: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}
+        />
       </Paper>
     </Box>
   );
 }
+

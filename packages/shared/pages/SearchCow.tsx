@@ -303,9 +303,10 @@ const ScanTab = ({ isAdmin }: { isAdmin?: boolean }) => {
             await new Promise(r => window.setTimeout(r, 600)); // UX delay for realism
             updateProgress(45, 'Matching against database…');
             
-            const token = isAdmin 
-                ? localStorage.getItem('adminToken')
-                : (await Preferences.get({ key: 'jwt_token' })).value;
+            const tokenResponse = isAdmin 
+                ? await Preferences.get({ key: 'adminToken' })
+                : await Preferences.get({ key: 'jwt_token' });
+            const token = tokenResponse.value;
             if (!token) throw new Error('Not authenticated');
 
             const formData = new FormData();
