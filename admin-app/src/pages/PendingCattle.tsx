@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, 
-  TableHead, TableRow, TablePagination, CircularProgress, Avatar, Alert, AlertTitle
+import {
+  Box, Typography, Paper, Table, TableBody, TableCell, TableContainer,
+  TableHead, TableRow, TablePagination, CircularProgress, Avatar, Alert, AlertTitle, Button
 } from '@mui/material';
-import { Pets as PetsIcon } from '@mui/icons-material';
+import { Pets as PetsIcon, Refresh as RefreshIcon } from '@mui/icons-material';
 import axios from 'axios';
 import { useQuery } from '@tanstack/react-query';
 import { API_BASE } from '@ama-gau-dhana/shared';
@@ -18,7 +18,7 @@ export default function PendingCattle() {
     navigate(`/cattle/${id}`);
   };
 
-  const { data, isLoading, isError, error } = useQuery({
+  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
     queryKey: ['pending-cattle', page, rowsPerPage],
     queryFn: async () => {
       const res = await axios.get(`${API_BASE}/api/admin/cattle/pending`, {
@@ -29,7 +29,7 @@ export default function PendingCattle() {
       }
       throw new Error("Failed to fetch pending cattle");
     },
-    staleTime: 60000, // Cache for 1 minute for a nice user experience
+    staleTime: 180000, // Cache for 3 minutes for a nice user experience
   });
 
   const cattle = data?.cattle || [];
@@ -41,11 +41,20 @@ export default function PendingCattle() {
         <Typography variant="h4" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
           Pending Registrations
         </Typography>
+        <Button 
+          variant="outlined" 
+          startIcon={isRefetching ? <CircularProgress size={20} /> : <RefreshIcon />} 
+          onClick={() => { setPage(0); refetch(); }}
+          disabled={isLoading || isRefetching}
+          sx={{ borderRadius: 2 }}
+        >
+          {isRefetching ? 'Refreshing...' : 'Refresh'}
+        </Button>
       </Box>
 
       <Alert severity="warning" sx={{ mb: 3, borderRadius: 2 }}>
         <AlertTitle>System Cleanup Notice</AlertTitle>
-        These are failed or stuck registrations (e.g. DL-API failures). To keep the database clean and ready, entries listed here are <strong>automatically deleted by a background cron job 2 hours after their creation</strong>. No manual action is required.
+        These are failed or stuck registrations (e.g. AI failures). To keep the database clean and ready, entries listed here are <strong>automatically deleted by 2 hours after their creation</strong>. No manual action is required. This page is for information purpose only.
       </Alert>
 
       {isError && (
@@ -66,19 +75,19 @@ export default function PendingCattle() {
             </TableHead>
             <TableBody>
               {cattle.map((cow: any) => (
-                <TableRow 
-                  hover 
-                  key={cow._id} 
-                  sx={{ 
+                <TableRow
+                  hover
+                  key={cow._id}
+                  sx={{
                     cursor: 'pointer',
                     '&:hover': { bgcolor: 'rgba(28, 57, 187, 0.04)' }
-                  }} 
+                  }}
                   onClick={() => handleRowClick(cow._id)}
                 >
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                      <Avatar 
-                        src={cow.photos?.faceProfile || cow.photos?.muzzle} 
+                      <Avatar
+                        src={cow.photos?.faceProfile || cow.photos?.muzzle}
                         sx={{ width: 48, height: 48, bgcolor: 'primary.light', boxShadow: 1 }}
                       >
                         <PetsIcon />

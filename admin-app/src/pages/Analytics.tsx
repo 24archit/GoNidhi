@@ -11,9 +11,12 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ThumbUpIcon from '@mui/icons-material/ThumbUp';
 import ThumbDownIcon from '@mui/icons-material/ThumbDown';
 import RemoveIcon from '@mui/icons-material/Remove';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import CircularProgress from '@mui/material/CircularProgress';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE } from '@ama-gau-dhana/shared';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 // ─── Status helpers ────────────────────────────────────────────────────────────
 const STATUS_META: Record<string, { dot: string; label: string }> = {
@@ -246,11 +249,7 @@ const ALL_TYPES = [
 // ─── Page ──────────────────────────────────────────────────────────────────────
 export default function Analytics() {
   const navigate = useNavigate();
-  const [logs, setLogs] = useState<any[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(0);
-  const [metrics, setMetrics] = useState({ avgTime: 0, successRate: 0, totalInferences: 0 });
-  const [isLoading, setIsLoading] = useState(false);
+  const queryClient = useQueryClient();
   const [isExporting, setIsExporting] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
@@ -261,40 +260,62 @@ export default function Analytics() {
 
   const rowsPerPage = 25;
 
-  const fetchLogs = useCallback(async (nextPage = 0, reset = false) => {
-    setIsLoading(true);
-    try {
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetching,
+    isFetchingNextPage,
+    refetch,
+    isRefetching
+  } = useInfiniteQuery({
+    queryKey: ['analytics-logs', appliedFilters],
+    queryFn: async ({ pageParam = 1 }) => {
       const res = await axios.get(`${API_BASE}/api/admin/analytics/ai-logs`, {
         params: {
-          page: nextPage + 1,
+          page: pageParam,
           limit: rowsPerPage,
           statuses: appliedFilters.statuses.join(',') || undefined,
           types: appliedFilters.types.join(',') || undefined,
           year: appliedFilters.year || undefined,
         }
       });
-      if (res.data.success) {
-        setLogs(prev => reset ? res.data.data : [...prev, ...res.data.data]);
-        setTotal(res.data.total);
-        setMetrics(res.data.metrics ?? { avgTime: 0, successRate: 0, totalInferences: 0 });
+      return res.data;
+    },
+    getNextPageParam: (lastPage, allPages) => {
+      const totalLoaded = allPages.reduce((acc, page) => acc + (page.data?.length || 0), 0);
+      if (lastPage.success && totalLoaded < lastPage.total) {
+        return allPages.length + 1;
       }
-    } catch (err) {
-      console.error('Failed to fetch AI logs', err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [appliedFilters]);
+      return undefined;
+    },
+    initialPageParam: 1,
+    staleTime: 180000
+  });
 
-  useEffect(() => { setPage(0); fetchLogs(0, true); }, [fetchLogs]);
+  const logs = data?.pages.flatMap(page => page.data) || [];
+  const total = data?.pages[0]?.total || 0;
+  const metrics = data?.pages[0]?.metrics || { avgTime: 0, successRate: 0, totalInferences: 0 };
+  const isLoading = isFetching && !isFetchingNextPage;
 
   // Optimistic correctness update in list
   const handleCorrectnessChange = async (id: string, val: boolean | null) => {
-    setLogs(prev => prev.map(l => l._id === id ? { ...l, isAiOutcomeCorrect: val } : l));
+    queryClient.setQueryData(['analytics-logs', appliedFilters], (oldData: any) => {
+      if (!oldData) return oldData;
+      return {
+        ...oldData,
+        pages: oldData.pages.map((page: any) => ({
+          ...page,
+          data: page.data.map((log: any) => log._id === id ? { ...log, isAiOutcomeCorrect: val } : log)
+        }))
+      };
+    });
+
     try {
       await axios.put(`${API_BASE}/api/admin/analytics/ai-logs/${id}`, { isAiOutcomeCorrect: val });
     } catch {
-      // revert silently
-      fetchLogs(0, true);
+      // revert by invalidating cache
+      queryClient.invalidateQueries({ queryKey: ['analytics-logs'] });
     }
   };
 
@@ -327,7 +348,7 @@ export default function Analytics() {
       )
     : logs;
 
-  const hasMore = logs.length < total;
+  const hasMore = hasNextPage;
   const activeFilterCount = appliedFilters.statuses.length + appliedFilters.types.length + (appliedFilters.year ? 1 : 0);
 
   return (
@@ -344,6 +365,16 @@ export default function Analytics() {
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={isRefetching ? <CircularProgress size={15} /> : <RefreshIcon sx={{ fontSize: 15 }} />}
+            onClick={() => queryClient.resetQueries({ queryKey: ['analytics-logs', appliedFilters] })}
+            disabled={isFetching || isRefetching || isExporting}
+            sx={{ borderRadius: 1.5, textTransform: 'none', fontSize: '0.8rem', borderColor: 'divider', color: 'text.secondary', '&:hover': { borderColor: 'text.primary', color: 'text.primary' } }}
+          >
+            {isRefetching ? 'Refreshing…' : 'Refresh'}
+          </Button>
           <Button
             size="small"
             variant="outlined"
@@ -544,11 +575,11 @@ export default function Analytics() {
             <Button
               size="small"
               variant="text"
-              disabled={isLoading}
-              onClick={() => { const next = page + 1; setPage(next); fetchLogs(next, false); }}
+              disabled={isFetchingNextPage}
+              onClick={() => fetchNextPage()}
               sx={{ color: 'primary.main', textTransform: 'none', fontSize: '0.78rem' }}
             >
-              {isLoading ? 'Loading…' : `Load ${Math.min(rowsPerPage, total - logs.length)} more`}
+              {isFetchingNextPage ? 'Loading…' : `Load ${Math.min(rowsPerPage, total - logs.length)} more`}
             </Button>
           )}
         </Box>

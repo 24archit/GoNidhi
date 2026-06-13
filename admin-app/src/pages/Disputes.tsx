@@ -3,14 +3,14 @@ import {
   Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, 
   TableHead, TableRow, TablePagination, Chip, Button, Dialog, DialogTitle, DialogContent, DialogActions, Select, MenuItem, FormControl, InputLabel, CircularProgress
 } from '@mui/material';
+import { Refresh as RefreshIcon } from '@mui/icons-material';
 import axios from 'axios';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { API_BASE } from '@ama-gau-dhana/shared';
 
 export default function Disputes() {
-  const [disputes, setDisputes] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [total, setTotal] = useState(0);
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   
@@ -19,26 +19,22 @@ export default function Disputes() {
   const [resolutionStatus, setResolutionStatus] = useState('resolved');
   const [assignedFarmerId, setAssignedFarmerId] = useState('');
 
-  const fetchDisputes = useCallback(async () => {
-    setIsLoading(true);
-    try {
+  const { data, isLoading, refetch, isRefetching } = useQuery({
+    queryKey: ['disputes', page, rowsPerPage],
+    queryFn: async () => {
       const res = await axios.get(`${API_BASE}/api/admin/disputes`, {
         params: { page: page + 1, limit: rowsPerPage }
       });
       if (res.data.success) {
-        setDisputes(res.data.data);
-        setTotal(res.data.total);
+        return { disputes: res.data.data, total: res.data.total };
       }
-    } catch (err) {
-      console.error("Failed to fetch disputes", err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [page, rowsPerPage]);
+      throw new Error("Failed to fetch disputes");
+    },
+    staleTime: 180000
+  });
 
-  useEffect(() => {
-    fetchDisputes();
-  }, [fetchDisputes]);
+  const disputes = data?.disputes || [];
+  const total = data?.total || 0;
 
   const handleResolveSubmit = async () => {
     if (!selectedDispute) return;
@@ -48,13 +44,7 @@ export default function Disputes() {
         assignedFarmerId: resolutionStatus === 'resolved' ? assignedFarmerId : undefined
       });
       setResolveOpen(false);
-      
-      // Snapshot optimization: update local state instead of refetching the whole list
-      setDisputes(prev => prev.map(dispute => 
-        dispute._id === selectedDispute._id 
-          ? { ...dispute, status: resolutionStatus } 
-          : dispute
-      ));
+      queryClient.invalidateQueries({ queryKey: ['disputes'] });
     } catch (err) {
       console.error("Failed to resolve dispute", err);
     }
@@ -62,9 +52,20 @@ export default function Disputes() {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-        Dispute Management
-      </Typography>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
+        <Typography variant="h4" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+          Dispute Management
+        </Typography>
+        <Button 
+          variant="outlined" 
+          startIcon={isRefetching ? <CircularProgress size={20} /> : <RefreshIcon />} 
+          onClick={() => { setPage(0); refetch(); }}
+          disabled={isLoading || isRefetching}
+          sx={{ borderRadius: 2 }}
+        >
+          {isRefetching ? 'Refreshing...' : 'Refresh'}
+        </Button>
+      </Box>
 
       <Paper sx={{ width: '100%', overflow: 'hidden', borderRadius: 1, mt: 3 }}>
         <TableContainer sx={{ maxHeight: '70vh' }}>

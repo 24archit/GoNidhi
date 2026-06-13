@@ -4,8 +4,9 @@ import {
   TableHead, TableRow, TablePagination, TextField, InputAdornment, Chip, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, DialogContentText, Button, CircularProgress, Avatar
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
-import { Search as SearchIcon, Delete as DeleteIcon, Person as PersonIcon, Phone as PhoneIcon } from '@mui/icons-material';
+import { Search as SearchIcon, Delete as DeleteIcon, Person as PersonIcon, Phone as PhoneIcon, Refresh as RefreshIcon } from '@mui/icons-material';
 import axios from 'axios';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { API_BASE } from '@ama-gau-dhana/shared';
 
@@ -20,9 +21,7 @@ interface Farmer {
 }
 
 export default function Farmers() {
-  const [farmers, setFarmers] = useState<Farmer[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [total, setTotal] = useState(0);
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(0); // 0-indexed for MUI
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [search, setSearch] = useState('');
@@ -47,12 +46,7 @@ export default function Farmers() {
       await axios.delete(`${API_BASE}/api/admin/users/farmers/${farmerToDelete}`);
       setDeleteConfirmOpen(false);
       
-      // Snapshot optimization: update local state instead of refetching everything
-      setFarmers(prev => prev.filter(f => f._id !== farmerToDelete));
-      setTotal(prev => prev - 1);
-      
-      // Seamlessly load the next records into the dashboard to keep the page full
-      fetchFarmers();
+      queryClient.invalidateQueries({ queryKey: ['farmers'] });
       
       setFarmerToDelete(null);
     } catch (err) {
@@ -67,9 +61,9 @@ export default function Farmers() {
     return () => clearTimeout(handler);
   }, [search]);
 
-  const fetchFarmers = useCallback(async () => {
-    setIsLoading(true);
-    try {
+  const { data, isLoading, refetch, isRefetching } = useQuery({
+    queryKey: ['farmers', page, rowsPerPage, debouncedSearch],
+    queryFn: async () => {
       const res = await axios.get(`${API_BASE}/api/admin/users/farmers`, {
         params: {
           page: page + 1, // 1-indexed for backend
@@ -78,19 +72,15 @@ export default function Farmers() {
         }
       });
       if (res.data.success) {
-        setFarmers(res.data.data);
-        setTotal(res.data.total);
+        return { farmers: res.data.data, total: res.data.total };
       }
-    } catch (err) {
-      console.error("Failed to fetch farmers", err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [page, rowsPerPage, debouncedSearch]);
+      throw new Error("Failed to fetch farmers");
+    },
+    staleTime: 180000
+  });
 
-  useEffect(() => {
-    fetchFarmers();
-  }, [fetchFarmers]);
+  const farmers = data?.farmers || [];
+  const total = data?.total || 0;
 
   const handleChangePage = (_: unknown, newPage: number) => {
     setPage(newPage);
@@ -103,9 +93,20 @@ export default function Farmers() {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-        Farmers Management
-      </Typography>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
+        <Typography variant="h4" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+          Farmers Management
+        </Typography>
+        <Button 
+          variant="outlined" 
+          startIcon={isRefetching ? <CircularProgress size={20} /> : <RefreshIcon />} 
+          onClick={() => { setPage(0); refetch(); }}
+          disabled={isLoading || isRefetching}
+          sx={{ borderRadius: 2 }}
+        >
+          {isRefetching ? 'Refreshing...' : 'Refresh'}
+        </Button>
+      </Box>
 
       <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
         <TextField

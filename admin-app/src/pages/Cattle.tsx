@@ -1,18 +1,16 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, 
-  TableHead, TableRow, TablePagination, TextField, InputAdornment, Button, Chip, Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress, Avatar
+  TableHead, TableRow, TablePagination, TextField, InputAdornment, Button, Chip, CircularProgress, Avatar
 } from '@mui/material';
-import { Search as SearchIcon, Add as AddIcon, LocationOn as LocationOnIcon, Pets as PetsIcon } from '@mui/icons-material';
+import { Search as SearchIcon, LocationOn as LocationOnIcon, Pets as PetsIcon, Refresh as RefreshIcon } from '@mui/icons-material';
 import axios from 'axios';
+import { useQuery } from '@tanstack/react-query';
 
 import { API_BASE } from '@ama-gau-dhana/shared';
 
 export default function Cattle() {
-  const [cattle, setCattle] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [search, setSearch] = useState('');
@@ -29,26 +27,22 @@ export default function Cattle() {
     navigate(`/cattle/${id}`);
   };
 
-  const fetchCattle = useCallback(async () => {
-    setIsLoading(true);
-    try {
+  const { data, isLoading, refetch, isRefetching } = useQuery({
+    queryKey: ['cattle', page, rowsPerPage, debouncedSearch],
+    queryFn: async () => {
       const res = await axios.get(`${API_BASE}/api/admin/cattle`, {
         params: { page: page + 1, limit: rowsPerPage, search: debouncedSearch }
       });
       if (res.data.success) {
-        setCattle(res.data.data);
-        setTotal(res.data.total);
+        return { cattle: res.data.data, total: res.data.total };
       }
-    } catch (err) {
-      console.error("Failed to fetch cattle", err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [page, rowsPerPage, debouncedSearch]);
+      throw new Error("Failed to fetch cattle");
+    },
+    staleTime: 180000
+  });
 
-  useEffect(() => {
-    fetchCattle();
-  }, [fetchCattle]);
+  const cattle = data?.cattle || [];
+  const total = data?.total || 0;
 
   return (
     <Box>
@@ -56,6 +50,15 @@ export default function Cattle() {
         <Typography variant="h4" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
           Cattle Directory
         </Typography>
+        <Button 
+          variant="outlined" 
+          startIcon={isRefetching ? <CircularProgress size={20} /> : <RefreshIcon />} 
+          onClick={() => { setPage(0); refetch(); }}
+          disabled={isLoading || isRefetching}
+          sx={{ borderRadius: 2 }}
+        >
+          {isRefetching ? 'Refreshing...' : 'Refresh'}
+        </Button>
       </Box>
 
       <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
