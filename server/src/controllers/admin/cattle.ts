@@ -96,7 +96,9 @@ export const getAllCattle = async (req: Request, res: Response) => {
         const limit = parseInt(req.query.limit as string) || 20;
         const search = req.query.search as string;
         
-        let query: any = {};
+        let query: any = {
+            'aiMetadata.status': { $ne: 'PENDING' }
+        };
         if (search) {
             query.$text = { $search: search };
         }
@@ -121,6 +123,38 @@ export const getAllCattle = async (req: Request, res: Response) => {
         });
     } catch (error: any) {
         console.error('Error fetching all cattle:', error);
+        res.status(500).json({ success: false, message: 'Server Error' });
+    }
+};
+
+export const getPendingCattle = async (req: Request, res: Response) => {
+    try {
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 20;
+        
+        let query: any = {
+            'aiMetadata.status': 'PENDING'
+        };
+
+        const skip = (page - 1) * limit;
+
+        const cattle = await Cattle.find(query)
+            .populate('farmerId', 'name contact.phone location')
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
+
+        const total = await Cattle.countDocuments(query);
+
+        res.status(200).json({
+            success: true,
+            data: cattle,
+            total,
+            totalPages: Math.ceil(total / limit),
+            currentPage: page
+        });
+    } catch (error: any) {
+        console.error('Error fetching pending cattle:', error);
         res.status(500).json({ success: false, message: 'Server Error' });
     }
 };

@@ -8,7 +8,8 @@ import {
   Logout as LogoutIcon,
   Menu as MenuIcon,
   AddCircle as AddCircleIcon,
-  Search as SearchIcon
+  Search as SearchIcon,
+  HourglassEmpty as HourglassEmptyIcon
 } from '@mui/icons-material';
 import { useNavigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -35,6 +36,7 @@ export default function Layout({ children }: { children?: ReactNode }) {
     { text: 'Disputes', icon: <GavelIcon />, path: '/disputes' },
     { text: 'Register Cattle', icon: <AddCircleIcon />, path: '/add-cow' },
     { text: 'Search Cattle', icon: <SearchIcon />, path: '/search' },
+    { text: 'Pending Logs', icon: <HourglassEmptyIcon />, path: '/pending-cattle' },
     { text: 'AI Insights', icon: <AnalyticsIcon />, path: '/analytics' },
   ];
 

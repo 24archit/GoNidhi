@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { getAllCattle, proxyRegisterCow, deleteCattle, getCattleDetails, updateCattle, proxySearchCow } from '../../controllers/admin/cattle';
+import { getAllCattle, proxyRegisterCow, deleteCattle, getCattleDetails, updateCattle, proxySearchCow, getPendingCattle } from '../../controllers/admin/cattle';
 import { requireAuth, authorizeRoles } from '../../middleware/auth';
 
 const router = express.Router();
@@ -9,6 +9,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 router.use(requireAuth, authorizeRoles('admin'));
 
 router.get('/', getAllCattle);
+router.get('/pending', getPendingCattle);
 router.get('/:id', getCattleDetails);
 router.put('/:id', updateCattle);
 router.delete('/:id', deleteCattle);

@@ -6,7 +6,15 @@ import { Preferences } from '@capacitor/preferences';
 import { AnimatePresence, motion } from 'framer-motion';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60, // 1 minute
+      gcTime: 1000 * 60 * 3, // 3 minutes
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 import theme from './theme';
 import Layout from './components/Layout';
@@ -24,6 +32,7 @@ import Onboarding from './pages/Onboarding';
 import Profile from './pages/Profile';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { AddCow, SearchCow, ProcessingProvider, GlobalProcessingOverlay } from '@ama-gau-dhana/shared';
+import PendingCattle from './pages/PendingCattle';
 import { Capacitor } from '@capacitor/core';
 import { StatusBar, Style } from '@capacitor/status-bar';
 
@@ -143,6 +152,7 @@ const AnimatedRoutes: React.FC<{ isFirstLaunch: boolean }> = ({ isFirstLaunch })
           <Route path="/profile" element={<Profile />} />
           <Route path="/add-cow" element={<AddCow isAdmin={true} />} />
           <Route path="/search" element={<SearchCow isAdmin={true} />} />
+          <Route path="/pending-cattle" element={<PendingCattle />} />
         </Route>
 
         {/* Fallback route */}
