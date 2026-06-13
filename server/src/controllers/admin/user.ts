@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { User } from '../../models/User';
 import { Cattle } from '../../models/Cattel';
+import { cleanupCowCloudResources } from '../../services/cattleService';
 
 export const getFarmers = async (req: Request, res: Response) => {
     try {
@@ -104,8 +105,20 @@ export const deleteFarmer = async (req: Request, res: Response) => {
             return res.status(404).json({ success: false, message: 'Farmer not found' });
         }
 
-        // Also delete their cattle
+        // Fetch all of the farmer's cows to clean up their cloud resources
+        const farmersCattle = await Cattle.find({ farmerId: id });
+        
+        // Also delete their cattle from MongoDB
         await Cattle.deleteMany({ farmerId: id });
+
+        // Background cleanup of cloud resources for all deleted cows
+        try {
+            for (const cow of farmersCattle) {
+                await cleanupCowCloudResources(cow);
+            }
+        } catch (cleanupErr) {
+            console.error('Error during cloud cleanup in deleteFarmer:', cleanupErr);
+        }
 
         res.status(200).json({ success: true, message: 'Farmer deleted successfully' });
     } catch (error: any) {

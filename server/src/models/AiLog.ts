@@ -43,6 +43,7 @@ export interface IAiLog extends Document {
     tradInlierRatio?: number;
     tradAlignedSsim?: number;
     xgbScore?: number;
+    fusionConfidence?: number;
     xgbMappedScore?: number;
     isAiOutcomeCorrect?: boolean;
     createdAt: Date;
@@ -68,7 +69,6 @@ const AiLogSchema = new Schema<IAiLog>({
     muzzlePostLgScore: { type: Number },
     lgMatches: { type: Number },
     ensembleScore: { type: Number },
-    pignisticMatch: { type: Number },
     dsBeliefMatch: { type: Number },
     dsBeliefMismatch: { type: Number },
     dsUncertainty: { type: Number },
@@ -91,6 +91,7 @@ const AiLogSchema = new Schema<IAiLog>({
     tradInlierRatio: { type: Number },
     tradAlignedSsim: { type: Number },
     xgbScore: { type: Number },
+    fusionConfidence: { type: Number },
     xgbMappedScore: { type: Number },
     isAiOutcomeCorrect: { type: Boolean }
 }, { timestamps: true });

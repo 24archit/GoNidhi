@@ -1,10 +1,12 @@
 import { v2 as cloudinary } from 'cloudinary';
 import { v4 as uuidv4 } from 'uuid';
 import dotenv from 'dotenv';
+import stream from 'stream';
 
 dotenv.config();
 
 // Cloudinary automatically picks up CLOUDINARY_URL from the environment variables
+
 export const uploadBase64ToCloudinary = async (base64String: string, folder: string = 'ama-gau-dhana-telemetry'): Promise<string> => {
     try {
         if (!base64String) return "";
@@ -23,9 +25,34 @@ export const uploadBase64ToCloudinary = async (base64String: string, folder: str
 
         return result.secure_url;
     } catch (error) {
-        console.error('Cloudinary telemetry upload error:', error);
+        console.error('Cloudinary base64 upload error:', error);
         return "";
     }
+};
+
+export const uploadBufferToCloudinary = async (buffer: Buffer, folder: string = 'ama-gau-dhana-images'): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+            {
+                folder,
+                public_id: uuidv4()
+            },
+            (error, result) => {
+                if (error) {
+                    console.error('Cloudinary buffer upload error:', error);
+                    reject(error);
+                } else if (result) {
+                    resolve(result.secure_url);
+                } else {
+                    reject(new Error('Unknown Cloudinary upload error'));
+                }
+            }
+        );
+
+        const bufferStream = new stream.PassThrough();
+        bufferStream.end(buffer);
+        bufferStream.pipe(uploadStream);
+    });
 };
 
 export const deleteFromCloudinary = async (url: string) => {
@@ -42,6 +69,6 @@ export const deleteFromCloudinary = async (url: string) => {
             console.log(`Deleted image from Cloudinary: ${publicId}`);
         }
     } catch (error) {
-        console.error('Cloudinary telemetry delete error:', error);
+        console.error('Cloudinary delete error:', error);
     }
 };

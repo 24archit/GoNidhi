@@ -147,9 +147,15 @@ export default function CattleProfile() {
       await axios.delete(`${API_BASE}/api/admin/cattle/${id}`);
       setDeleteConfirmOpen(false);
       navigate('/cattle');
-    } catch (err) {
-      console.error("Failed to delete cattle", err);
-      alert("Failed to delete cattle");
+    } catch (err: any) {
+      if (err.response && err.response.status === 404) {
+        // The cattle was already deleted (e.g. via background script or another session)
+        setDeleteConfirmOpen(false);
+        navigate('/cattle');
+      } else {
+        console.error("Failed to delete cattle", err);
+        alert("Failed to delete cattle");
+      }
     }
   };
 
@@ -556,10 +562,6 @@ export default function CattleProfile() {
                 <TableRow>
                   <TableCell variant="head" sx={{ fontWeight: 'bold' }}>DS Uncertainty</TableCell>
                   <TableCell>{telemetryLog.dsUncertainty !== undefined ? telemetryLog.dsUncertainty : 'N/A'}</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell variant="head" sx={{ fontWeight: 'bold' }}>Pignistic Match</TableCell>
-                  <TableCell>{telemetryLog.pignisticMatch !== undefined ? telemetryLog.pignisticMatch : 'N/A'}</TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell variant="head" sx={{ fontWeight: 'bold' }}>XGB Score / Mapped</TableCell>

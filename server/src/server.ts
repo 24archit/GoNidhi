@@ -1,12 +1,17 @@
 import dotenv from "dotenv";
 dotenv.config();
-import axios from 'axios';
-import connectDB from "./config/db";
+
 import express from "express";
 import path from "path";
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+
+import connectDB from "./config/db";
+import { initJobs } from "./jobs";
+import { errorHandler } from "./middleware/errorHandler";
+
+// Farmer Routes
 import authRoutes from './routes/farmer/auth';
 import cattleRoutes from './routes/farmer/cattle';
 import locationRoutes from './routes/farmer/location';
@@ -23,6 +28,14 @@ if (!process.env.JWT_SECRET || !process.env.MONGO_URI) {
   console.error("FATAL ERROR: Missing env secrets.");
   process.exit(1);
 }
+
+// Handle unexpected process errors
+process.on('uncaughtException', (err) => {
+    console.error('UNCAUGHT EXCEPTION! 💥', err);
+});
+process.on('unhandledRejection', (err) => {
+    console.error('UNHANDLED REJECTION! 💥', err);
+});
 
 const app = express();
 app.set('trust proxy', 1);
@@ -63,21 +76,6 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get('/api/health', (req, res) => {
-  res.status(200).send("Express Server is Awake and running!");
-});
-
-const DL_API_URL = process.env.DL_API_URL;
-if (DL_API_URL) {
-  setInterval(async () => {
-    try {
-      await axios.get(`${DL_API_URL}/docs`);
-    } catch (error: any) {
-      console.error("Internal Ping Failed:", error.message);
-    }
-  }, 10 * 60 * 1000);
-}
-
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
@@ -86,9 +84,17 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Database and Jobs Initialization
 connectDB();
+initJobs();
 
+// Static and Public Routes
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.get('/api/health', (req, res) => res.status(200).send("Express Server is Awake and running!"));
+app.get('/health', (req, res) => res.status(200).send('OK'));
+app.get("/", (req, res) => res.send("Hello World! API running"));
+
+// Farmer API Routes
 app.use('/api/farmer/auth', authLimiter, authRoutes);
 app.use('/api/farmer/cattle', cattleRoutes);
 app.use('/api/farmer/location', locationRoutes);
@@ -101,14 +107,9 @@ app.use('/api/admin/disputes', adminDisputeRoutes);
 app.use('/api/admin/analytics', adminAnalyticsRoutes);
 app.use('/api/admin/users', adminUserRoutes);
 
-app.get('/health', (req, res) => {
-  res.status(200).send('OK');
-});
+// Global Error Handler Middleware
+app.use(errorHandler);
 
-app.get("/", (req, res) => {
-  res.send("Hello World! API running");
-});
-
-app.listen(Number(port), "0.0.0.0", () => {
-  console.log(`Server is running at http://0.0.0.0:${port}`);
+app.listen(Number(port), "localhost", () => {
+  console.log(`Server is running at http://localhost:${port}`);
 });

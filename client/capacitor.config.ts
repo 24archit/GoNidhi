@@ -4,10 +4,10 @@ const config: CapacitorConfig = {
   appId: 'com.ocac.amagaudhana',
   appName: 'Ama Gaudhana',
   webDir: 'dist',
-  server: {
-    url: 'http://localhost:5173',
-    cleartext: true
-  }
+  // server: {
+  //   url: 'http://localhost:5173',
+  //   cleartext: true
+  // }
 };
 
 export default config;

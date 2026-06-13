@@ -371,7 +371,7 @@ export default function AnalyticsDetail() {
             <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, display: 'block', mb: 1, textTransform: 'uppercase', fontSize: '0.65rem' }}>
               Step 3 · Gatekeeper Verdict
             </Typography>
-            <ScoreBar label="Pignistic Match" value={log.pignisticMatch} threshold={0.60} />
+            <ScoreBar label="DS Belief Match" value={log.dsBeliefMatch} threshold={0.60} />
             <ScoreBar label="Final Ensemble Conf." value={log.ensembleScore} threshold={0.85} />
           </SectionCard>
         </Grid>

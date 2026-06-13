@@ -1,9 +1,12 @@
 import { Request, Response } from 'express';
 import { Cattle } from '../../models/Cattel';
 import { User } from '../../models/User';
-import { uploadImageToOCI, publishDlJob } from '../../services/ociService';
+import { uploadBufferToCloudinary, deleteFromCloudinary } from '../../services/cloudinaryService';
+import { cleanupCowCloudResources } from '../../services/cattleService';
 import axios from 'axios';
-import { processTelemetry, recentRejections } from '../farmer/cattle';
+import { recentRejections } from '../farmer/cattle';
+import { processTelemetry } from '../../services/telemetryService';
+import { getDlApiUrl } from '../../utils/dlApi';
 
 export const getCattleDetails = async (req: Request, res: Response) => {
     try {
@@ -119,89 +122,112 @@ export const proxyRegisterCow = async (req: Request, res: Response) => {
             }
         }
 
-        const uploadFileIfPresent = async (fileArray: Express.Multer.File[] | undefined) => {
-            if (!fileArray || fileArray.length === 0) return '';
-            const file = fileArray[0];
-            return await uploadImageToOCI(file.buffer, file.originalname, file.mimetype);
+        const uploadedFiles: string[] = [];
+
+        const safeUpload = async (buffer: Buffer, folderName: string = ''): Promise<string> => {
+            const fileUrl = await uploadBufferToCloudinary(buffer, folderName);
+            uploadedFiles.push(fileUrl);
+            return fileUrl;
         };
 
-        const faceProfileFile = files.faceImage[0];
-        const muzzleFile = files.muzzleImage[0];
-        
-        const faceProfileOci = await uploadImageToOCI(faceProfileFile.buffer, faceProfileFile.originalname, faceProfileFile.mimetype);
-        const muzzleOci = await uploadImageToOCI(muzzleFile.buffer, muzzleFile.originalname, muzzleFile.mimetype);
-        const leftProfileOci = await uploadFileIfPresent(files.leftImage);
-        const rightProfileOci = await uploadFileIfPresent(files.rightImage);
-        const backViewOci = await uploadFileIfPresent(files.backImage);
-        const tailViewOci = await uploadFileIfPresent(files.tailImage);
-        const selfieOci = await uploadFileIfPresent(files.selfieImage);
+        const safeUploadIfPresent = async (fileArray: Express.Multer.File[] | undefined): Promise<string> => {
+            if (!fileArray || fileArray.length === 0) return '';
+            const file = fileArray[0];
+            return await safeUpload(file.buffer, 'ama-gau-dhana-images');
+        };
 
-        const newCow = new Cattle({
-            farmerId: farmer._id,
-            tagNumber: (tagNo && tagNo.trim() !== '') ? tagNo : undefined,
-            name,
-            species: species || undefined,
-            breed: breed || undefined,
-            sex: sex || undefined,
-            dob: dob || undefined,
-            ageMonths: ageMonths ? Number(ageMonths) : undefined,
-            sireTag,
-            damTag,
-            source,
-            purchaseDetails: source === 'Purchase' ? {
-                date: purchaseDate,
-                price: purchasePrice ? Number(purchasePrice) : undefined
-            } : undefined,
-            location: { lat: Number(lat), lng: Number(lng) },
-            photos: {
-                faceProfile: faceProfileOci,
-                muzzle: muzzleOci,
-                leftProfile: leftProfileOci,
-                rightProfile: rightProfileOci,
-                backView: backViewOci,
-                tailView: tailViewOci,
-                selfie: selfieOci
-            },
-            aiMetadata: { isRegistered: false, status: 'PENDING' },
-            currentStatus: productionStatus,
-            lastWeight: currentWeight ? Number(currentWeight) : undefined,
-            healthStats: {
-                birthWeight: birthWeight ? Number(birthWeight) : undefined,
-                motherWeightAtCalving: motherWeightAtCalving ? Number(motherWeightAtCalving) : undefined,
-                growthStatus,
-                healthStatus,
-                bodyConditionScore: bodyConditionScore ? Number(bodyConditionScore) : undefined
-            }
-        });
-
-        const savedCow = await newCow.save();
-
-        await User.findByIdAndUpdate(farmer._id, { $push: { cows: savedCow._id } });
+        let faceProfileCloudinary = '', muzzleCloudinary = '', leftProfileCloudinary = '', rightProfileCloudinary = '', backViewCloudinary = '', tailViewCloudinary = '', selfieCloudinary = '';
+        let faceTelemetryCloudinary = '', muzzleTelemetryCloudinary = '';
+        let savedCow: any = null;
 
         try {
-            await publishDlJob({
-                type: 'register',
+            const faceProfileFile = files.faceImage[0];
+            const muzzleFile = files.muzzleImage[0];
+            
+            faceProfileCloudinary = await safeUpload(faceProfileFile.buffer, 'ama-gau-dhana-images');
+            muzzleCloudinary = await safeUpload(muzzleFile.buffer, 'ama-gau-dhana-images');
+            leftProfileCloudinary = await safeUploadIfPresent(files.leftImage);
+            rightProfileCloudinary = await safeUploadIfPresent(files.rightImage);
+            backViewCloudinary = await safeUploadIfPresent(files.backImage);
+            tailViewCloudinary = await safeUploadIfPresent(files.tailImage);
+            selfieCloudinary = await safeUploadIfPresent(files.selfieImage);
+
+            // Upload isolated telemetry copies for the AI DL-API
+            faceTelemetryCloudinary = await safeUpload(faceProfileFile.buffer, 'ama-gau-dhana-telemetry');
+            muzzleTelemetryCloudinary = await safeUpload(muzzleFile.buffer, 'ama-gau-dhana-telemetry');
+
+            const newCow = new Cattle({
+                farmerId: farmer._id,
+                tagNumber: (tagNo && tagNo.trim() !== '') ? tagNo : undefined,
+                name,
+                species: species || undefined,
+                breed: breed || undefined,
+                sex: sex || undefined,
+                dob: dob || undefined,
+                ageMonths: ageMonths ? Number(ageMonths) : undefined,
+                sireTag,
+                damTag,
+                source,
+                purchaseDetails: source === 'Purchase' ? {
+                    date: purchaseDate,
+                    price: purchasePrice ? Number(purchasePrice) : undefined
+                } : undefined,
+                location: { lat: Number(lat), lng: Number(lng) },
+                photos: {
+                    faceProfile: faceProfileCloudinary,
+                    muzzle: muzzleCloudinary,
+                    leftProfile: leftProfileCloudinary,
+                    rightProfile: rightProfileCloudinary,
+                    backView: backViewCloudinary,
+                    tailView: tailViewCloudinary,
+                    selfie: selfieCloudinary
+                },
+                aiMetadata: { isRegistered: false, status: 'PENDING' },
+                currentStatus: productionStatus,
+                lastWeight: currentWeight ? Number(currentWeight) : undefined,
+                healthStats: {
+                    birthWeight: birthWeight ? Number(birthWeight) : undefined,
+                    motherWeightAtCalving: motherWeightAtCalving ? Number(motherWeightAtCalving) : undefined,
+                    growthStatus,
+                    healthStatus,
+                    bodyConditionScore: bodyConditionScore ? Number(bodyConditionScore) : undefined
+                }
+            });
+
+            savedCow = await newCow.save();
+
+            await User.findByIdAndUpdate(farmer._id, { $push: { cows: savedCow._id } });
+
+            const dlApiUrl = getDlApiUrl();
+            await axios.post(`${dlApiUrl}/register`, {
                 cow_id: savedCow._id.toString(),
                 farmer_id: farmer._id.toString(),
                 cow_name: name,
-                face_image_oci: faceProfileOci,
-                muzzle_image_oci: muzzleOci
+                face_image_url: faceTelemetryCloudinary,
+                muzzle_image_url: muzzleTelemetryCloudinary
             });
-        } catch (queueError: any) {
-            console.error('Error putting job into OCI Queue:', queueError.message);
-            await Cattle.findByIdAndDelete(savedCow._id);
-            await User.findByIdAndUpdate(farmer._id, { $pull: { cows: savedCow._id } });
-            return res.status(500).json({ success: false, message: 'Could not enqueue registration process. Please try again.' });
+
+            res.status(202).json({
+                success: true,
+                message: `Cow proxy registration accepted for farmer ${farmer.name}.`,
+                data: savedCow
+            });
+
+        } catch (error: any) {
+            console.error('Error proxy registering cow (Rollback Triggered):', error.message || error);
+            
+            if (savedCow) {
+                await Cattle.findByIdAndDelete(savedCow._id).catch(() => {});
+                await User.findByIdAndUpdate(farmer._id, { $pull: { cows: savedCow._id } }).catch(() => {});
+            }
+            for (const fileUrl of uploadedFiles) {
+                await deleteFromCloudinary(fileUrl).catch(() => {});
+            }
+
+            res.status(500).json({ success: false, message: error.message || 'Could not complete registration. Rolled back successfully.' });
         }
-
-        res.status(202).json({
-            success: true,
-            message: `Cow proxy registration accepted for farmer ${farmer.name}.`,
-            data: savedCow
-        });
-
     } catch (error: any) {
-        console.error('Error proxy registering cow:', error);
+        console.error('Error in proxy registering cow outer block:', error);
         res.status(500).json({ success: false, message: error.message || 'Server Error' });
     }
 };
@@ -212,13 +238,17 @@ export const deleteCattle = async (req: Request, res: Response) => {
         const deletedCattle = await Cattle.findByIdAndDelete(id);
 
         if (!deletedCattle) {
-            return res.status(404).json({ success: false, message: 'Cattle not found' });
+            // Idempotent delete: if it's already gone, treat as success
+            return res.status(200).json({ success: true, message: 'Cattle already deleted' });
         }
 
         // Remove from farmer's list
         if (deletedCattle.farmerId) {
-            await User.findByIdAndUpdate(deletedCattle.farmerId, { $pull: { cows: deletedCattle._id } });
+            await User.findByIdAndUpdate(deletedCattle.farmerId, { $pull: { cows: deletedCattle._id } }).catch(() => {});
         }
+
+        // Background cleanup of cloud resources
+            await cleanupCowCloudResources(deletedCattle);
 
         res.status(200).json({ success: true, message: 'Cattle deleted successfully' });
     } catch (error: any) {
@@ -276,22 +306,25 @@ export const proxySearchCow = async (req: Request, res: Response) => {
             return res.status(400).json({ success: false, message: 'Both a Face Profile and a Muzzle image are strictly required for AI verification.' });
         }
 
+        let faceCloudinary: string | undefined;
+        let muzzleCloudinary: string | undefined;
         try {
             const faceFile = files.faceImage[0];
             const muzzleFile = files.muzzleImage[0];
 
             // Search images are uploaded DIRECTLY to telemetry to prevent root pollution
-            const faceOci = await uploadImageToOCI(faceFile.buffer, faceFile.originalname, faceFile.mimetype, 'ama-gau-dhana-telemetry');
-            const muzzleOci = await uploadImageToOCI(muzzleFile.buffer, muzzleFile.originalname, muzzleFile.mimetype, 'ama-gau-dhana-telemetry');
+            faceCloudinary = await uploadBufferToCloudinary(faceFile.buffer, 'ama-gau-dhana-telemetry');
+            muzzleCloudinary = await uploadBufferToCloudinary(muzzleFile.buffer, 'ama-gau-dhana-telemetry');
 
-            const dlApiUrl = process.env.DL_MODEL_SERVER_LINK || 'http://localhost:8000';
+            const dlApiUrl = getDlApiUrl();
             const dlResponse = await axios.post(`${dlApiUrl}/search`, {
                 user_id: 'admin_proxy',
                 role: 'admin',
-                face_image_oci: faceOci,
-                muzzle_image_oci: muzzleOci
+                face_image_url: faceCloudinary,
+                muzzle_image_url: muzzleCloudinary
             }, {
-                signal: abortController.signal
+                signal: abortController.signal,
+                timeout: 120000 // 120 seconds timeout
             });
 
             // Wait for the unified DL-API response
@@ -331,6 +364,10 @@ export const proxySearchCow = async (req: Request, res: Response) => {
             });
 
         } catch (dlError: any) {
+            // Rollback telemetry images if DL API fails or client aborts
+            if (faceCloudinary) await deleteFromCloudinary(faceCloudinary).catch(() => {});
+            if (muzzleCloudinary) await deleteFromCloudinary(muzzleCloudinary).catch(() => {});
+
             if (axios.isCancel(dlError) || dlError.name === 'AbortError' || dlError.name === 'CanceledError') {
                 console.log('Client disconnected, canceled DL API search request.');
                 return res.status(499).json({ success: false, message: 'Client Closed Request' });

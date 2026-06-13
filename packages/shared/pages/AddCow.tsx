@@ -800,12 +800,13 @@ export const AddCow: React.FC<AddCowProps> = ({ isAdmin = false }) => {
 
             } catch (err: any) {
                 stopProcessing();
-                console.error('Server error during registration request', err);
+                const backendMsg = err.response?.data?.message || err.message;
+                console.error('Server error during registration request', backendMsg, err);
                 try {
                     if (offlineDraft && offlineDraft.id) await syncManager.removePendingCow(offlineDraft.id);
                     await syncManager.savePendingCow({ ...formData, lat, lng });
                     localStorage.setItem('last_registration_time', Date.now().toString());
-                    setFeedback({ type: 'SERVER_ERROR_SAVED', title: 'Saved Locally (Server Error)', message: `Server error: ${err.message || 'Please try again'}. Your registration has been saved locally for review and will automatically sync later.` });
+                    setFeedback({ type: 'SERVER_ERROR_SAVED', title: 'Saved Locally (Server Error)', message: `Server error: ${backendMsg || 'Please try again'}. Your registration has been saved locally for review and will automatically sync later.` });
                 } catch (localErr) {
                     console.error('Failed to save locally as fallback', localErr);
                 }
@@ -875,7 +876,7 @@ export const AddCow: React.FC<AddCowProps> = ({ isAdmin = false }) => {
                 {feedback && (
                     <>
                         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pb: 1, fontWeight: 'bold', color: feedback.type === 'OFFLINE_SAVED' || feedback.type === 'SERVER_ERROR_SAVED' ? 'warning.main' : 'error.main' }}>
-                            {feedback.type === 'ERROR' || feedback.type === 'FATAL' ? <ErrorOutline sx={{ fontSize: 28 }} /> : <WifiOffIcon sx={{ fontSize: 28 }} />}
+                            {feedback.type === 'ERROR' || feedback.type === 'FATAL' ? <ErrorOutline sx={{ fontSize: 28 }} /> : <WifiOff sx={{ fontSize: 28 }} />}
                             {feedback.title}
                         </DialogTitle>
                         <DialogContent>
@@ -967,7 +968,7 @@ export const AddCow: React.FC<AddCowProps> = ({ isAdmin = false }) => {
                     {!navigator.onLine && (
                         <Alert
                             severity="warning"
-                            icon={<WifiOffIcon />}
+                            icon={<WifiOff />}
                             sx={{ mb: 2, borderRadius: '12px' }}
                         >
                             <AlertTitle sx={{ fontWeight: 'bold' }}>Offline Mode</AlertTitle>
