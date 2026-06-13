@@ -110,6 +110,6 @@ app.use('/api/admin/users', adminUserRoutes);
 // Global Error Handler Middleware
 app.use(errorHandler);
 
-app.listen(Number(port), "localhost", () => {
-  console.log(`Server is running at http://localhost:${port}`);
+app.listen(Number(port), "0.0.0.0", () => {
+  console.log(`Server is running on port ${port}`);
 });
