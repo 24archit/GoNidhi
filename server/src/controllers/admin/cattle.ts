@@ -4,14 +4,14 @@ import { User } from '../../models/User';
 import { uploadBufferToCloudinary, deleteFromCloudinary } from '../../services/cloudinaryService';
 import { cleanupCowCloudResources } from '../../services/cattleService';
 import axios from 'axios';
-import { recentRejections } from '../farmer/cattle';
+import { recentRejections, processDlApiResult } from '../farmer/cattle';
 import { processTelemetry } from '../../services/telemetryService';
 import { getDlApiUrl } from '../../utils/dlApi';
 
 export const getCattleDetails = async (req: Request, res: Response) => {
     try {
         const id = req.params.id as string;
-        const cattle = await Cattle.findById(id).populate('farmerId', 'name contact.phone location.village location.district');
+        let cattle = await Cattle.findById(id).populate('farmerId', 'name contact.phone location.village location.district');
         if (!cattle) {
             if (recentRejections.has(id)) {
                 const rejectionData = recentRejections.get(id);
@@ -43,6 +43,46 @@ export const getCattleDetails = async (req: Request, res: Response) => {
             }
             return res.status(404).json({ success: false, message: 'Cattle not found' });
         }
+        if (cattle.aiMetadata.status === 'PENDING') {
+            try {
+                const dlApiUrl = getDlApiUrl();
+                const statusRes = await axios.get(`${dlApiUrl}/status/${cattle._id}`);
+                
+                if (statusRes.data.status === 'COMPLETED') {
+                    console.log(`[DL-API Sync Admin] Polled DL-API and found COMPLETED result for cow ${cattle._id}. Processing locally.`);
+                    await processDlApiResult(statusRes.data.result);
+                    
+                    const updatedCow = await Cattle.findById(cattle._id).populate('farmerId', 'name contact.phone location.village location.district');
+                    if (!updatedCow) {
+                        const rejectionData = recentRejections.get(cattle._id.toString());
+                        return res.status(400).json({ 
+                            success: false, 
+                            isRejected: true,
+                            status: rejectionData ? (rejectionData as any).status : 'FAILED',
+                            message: rejectionData ? (rejectionData as any).message : 'Registration failed.'
+                        });
+                    }
+                    cattle = updatedCow;
+                }
+            } catch (err: any) {
+                if (err.response && err.response.status === 404) {
+                    console.log(`[DL-API Sync Admin] Cow ${cattle._id} is PENDING but DL-API has no record of it. Discarding.`);
+                    await cleanupCowCloudResources(cattle);
+                    await Cattle.findByIdAndDelete(cattle._id);
+                    if (cattle.farmerId) {
+                        await User.findByIdAndUpdate(cattle.farmerId._id || cattle.farmerId, { $pull: { cows: cattle._id } });
+                    }
+                    
+                    return res.status(400).json({ 
+                        success: false, 
+                        isRejected: true,
+                        status: 'AI_CRASH',
+                        message: 'The AI server dropped the registration request due to an internal error. Please try again.'
+                    });
+                }
+            }
+        }
+
         res.status(200).json({ success: true, data: cattle });
     } catch (error: any) {
         console.error('Error fetching cattle details:', error);

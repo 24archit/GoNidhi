@@ -267,7 +267,7 @@ export const searchCow = asyncHandler(async (req: Request, res: Response) => {
     }
 });
 
-async function processDlApiResult(payload: any) {
+export async function processDlApiResult(payload: any) {
     const { cow_id, farmer_id, status, matched_cow_id, superpoint_cache, error_message, telemetry } = payload;
 
     if (telemetry) {
