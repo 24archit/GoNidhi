@@ -22,8 +22,8 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
           
-          # Set up a temporary checkout of the Hugging Face remote
-          git clone https://huggingface.co/spaces/24archit/Ama-Pashu-DL hf-space
+          # Set up a temporary checkout of the Hugging Face remote using the auth token
+          git clone https://24archit:${HF_TOKEN}@huggingface.co/spaces/24archit/Ama-Pashu-DL hf-space
           cd hf-space
           
           # Check out the target branch or create it if it doesn't exist
