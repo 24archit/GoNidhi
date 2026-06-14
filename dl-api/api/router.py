@@ -1,12 +1,13 @@
 import requests
 import traceback
-from fastapi import APIRouter, Request, BackgroundTasks, HTTPException
+from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Depends
 
 from core import globals as glb
 from core.config import EXPRESS_WEBHOOK_URL
 from schemas import RegistrationJobPayload, SearchRequest
 from services.registration_service import process_registration
 from services.search_service import _search_cow_impl
+from core.security import verify_token, limiter
 
 router = APIRouter()
 
@@ -26,13 +27,13 @@ async def process_registration_safe(payload: dict):
             except Exception as webhook_err:
                 print(f"Failed to send async registration failure webhook: {webhook_err}")
 
-@router.post("/register")
+@router.post("/register", dependencies=[Depends(verify_token)])
 async def async_register(payload: RegistrationJobPayload, background_tasks: BackgroundTasks):
     """Entrypoint for Node server to dispatch an async registration job."""
     background_tasks.add_task(process_registration_safe, payload.dict())
     return {"status": "Job accepted"}
 
-@router.post("/search")
+@router.post("/search", dependencies=[Depends(verify_token)])
 async def search_cow(req: SearchRequest, fastapi_req: Request):
     try:
         return await _search_cow_impl(req, fastapi_req)
@@ -42,7 +43,7 @@ async def search_cow(req: SearchRequest, fastapi_req: Request):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Internal AI Error: {str(e)}")
 
-@router.delete("/cow/{cow_id}")
+@router.delete("/cow/{cow_id}", dependencies=[Depends(verify_token)])
 async def delete_cow_embeddings(cow_id: str):
     """Deletes the Qdrant vector embeddings for a specific cow."""
     try:
@@ -52,7 +53,7 @@ async def delete_cow_embeddings(cow_id: str):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Internal AI Error while deleting vectors: {str(e)}")
 
-@router.get("/status/{cow_id}")
+@router.get("/status/{cow_id}", dependencies=[Depends(verify_token)])
 async def get_status(cow_id: str):
     if cow_id in glb.active_jobs:
         job = glb.active_jobs[cow_id]
@@ -62,7 +63,8 @@ async def get_status(cow_id: str):
     raise HTTPException(status_code=404, detail="Job not found or already finished")
 
 @router.get("/health")
-async def health_check():
+@limiter.limit("5/minute")
+async def health_check(request: Request):
     """Liveness check for Load Balancers."""
     return {
         "status": "healthy", 

@@ -7,7 +7,7 @@ import { uploadBufferToCloudinary, deleteFromCloudinary } from '../../services/c
 import { asyncHandler } from '../../middleware/asyncHandler';
 import { processTelemetry } from '../../services/telemetryService';
 import { createCattleRegistration, cleanupCowCloudResources } from '../../services/cattleService';
-import { getDlApiUrl } from '../../utils/dlApi';
+import { dlApiClient } from '../../utils/dlApiClient';
 
 interface AuthRequest extends Request {
     user?: { id: string; role: string; name: string };
@@ -141,8 +141,7 @@ export const getCowProfile = asyncHandler(async (req: Request, res: Response) =>
     }
     if (cow.aiMetadata.status === 'PENDING') {
         try {
-            const dlApiUrl = getDlApiUrl();
-            const statusRes = await axios.get(`${dlApiUrl}/status/${cow._id}`);
+            const statusRes = await dlApiClient.get(`/status/${cow._id}`);
             
             if (statusRes.data.status === 'COMPLETED') {
                 console.log(`[DL-API Sync] Polled DL-API and found COMPLETED result for cow ${cow._id}. Processing locally.`);
@@ -213,8 +212,7 @@ export const searchCow = asyncHandler(async (req: Request, res: Response) => {
         faceCloudinary = await uploadBufferToCloudinary(faceFile.buffer, 'ama-gau-dhana-telemetry');
         muzzleCloudinary = await uploadBufferToCloudinary(muzzleFile.buffer, 'ama-gau-dhana-telemetry');
 
-        const dlApiUrl = getDlApiUrl();
-        const dlResponse = await axios.post(`${dlApiUrl}/search`, {
+        const dlResponse = await dlApiClient.post(`/search`, {
             user_id: authReq.user.id,
             role: authReq.user.role || 'farmer',
             face_image_url: faceCloudinary,

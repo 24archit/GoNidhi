@@ -1,8 +1,7 @@
 import { Cattle } from '../models/Cattel';
 import { User } from '../models/User';
 import { uploadBufferToCloudinary, deleteFromCloudinary } from './cloudinaryService';
-import axios from 'axios';
-import { getDlApiUrl } from '../utils/dlApi';
+import { dlApiClient } from '../utils/dlApiClient';
 
 export const createCattleRegistration = async (farmerId: string, payload: any, files: any) => {
     // 1. ATOMICITY CHECK: Ensure the farmer does not already have a PENDING cow.
@@ -145,10 +144,9 @@ export const createCattleRegistration = async (farmerId: string, payload: any, f
 
         // Send Job to DL-API REST Endpoint
         try {
-            const dlApiUrl = getDlApiUrl();
             // We do not await this heavily, we just trigger it and let it run in the background thread of the DL-API.
             // The DL-API will immediately return 202 Accepted.
-            await axios.post(`${dlApiUrl}/register`, {
+            await dlApiClient.post(`/register`, {
                 cow_id: savedCow._id.toString(),
                 farmer_id: farmerId,
                 cow_name: name,
@@ -190,8 +188,7 @@ export const cleanupCowCloudResources = async (cow: any) => {
         
         // Instruct DL-API to delete vectors
         try {
-            const dlApiUrl = getDlApiUrl();
-            await axios.delete(`${dlApiUrl}/cow/${cow._id}`);
+            await dlApiClient.delete(`/cow/${cow._id}`);
         } catch (dlErr) {
             console.error(`Failed to delete vectors for cow ${cow._id} in DL-API:`, dlErr);
         }

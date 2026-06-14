@@ -6,7 +6,7 @@ import { cleanupCowCloudResources } from '../../services/cattleService';
 import axios from 'axios';
 import { recentRejections, processDlApiResult } from '../farmer/cattle';
 import { processTelemetry } from '../../services/telemetryService';
-import { getDlApiUrl } from '../../utils/dlApi';
+import { dlApiClient } from '../../utils/dlApiClient';
 
 export const getCattleDetails = async (req: Request, res: Response) => {
     try {
@@ -45,8 +45,7 @@ export const getCattleDetails = async (req: Request, res: Response) => {
         }
         if (cattle.aiMetadata.status === 'PENDING') {
             try {
-                const dlApiUrl = getDlApiUrl();
-                const statusRes = await axios.get(`${dlApiUrl}/status/${cattle._id}`);
+                const statusRes = await dlApiClient.get(`/status/${cattle._id}`);
                 
                 if (statusRes.data.status === 'COMPLETED') {
                     console.log(`[DL-API Sync Admin] Polled DL-API and found COMPLETED result for cow ${cattle._id}. Processing locally.`);
@@ -272,8 +271,7 @@ export const proxyRegisterCow = async (req: Request, res: Response) => {
 
             await User.findByIdAndUpdate(farmer._id, { $push: { cows: savedCow._id } });
 
-            const dlApiUrl = getDlApiUrl();
-            await axios.post(`${dlApiUrl}/register`, {
+            await dlApiClient.post(`/register`, {
                 cow_id: savedCow._id.toString(),
                 farmer_id: farmer._id.toString(),
                 cow_name: name,
@@ -390,8 +388,7 @@ export const proxySearchCow = async (req: Request, res: Response) => {
             faceCloudinary = await uploadBufferToCloudinary(faceFile.buffer, 'ama-gau-dhana-telemetry');
             muzzleCloudinary = await uploadBufferToCloudinary(muzzleFile.buffer, 'ama-gau-dhana-telemetry');
 
-            const dlApiUrl = getDlApiUrl();
-            const dlResponse = await axios.post(`${dlApiUrl}/search`, {
+            const dlResponse = await dlApiClient.post(`/search`, {
                 user_id: 'admin_proxy',
                 role: 'admin',
                 face_image_url: faceCloudinary,

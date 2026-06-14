@@ -3,6 +3,9 @@ import asyncio
 import xgboost as xgb
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
+from slowapi.errors import RateLimitExceeded
+from slowapi import _rate_limit_exceeded_handler
+from core.security import limiter
 
 # Core setup and configuration
 from core.config import (
@@ -54,6 +57,8 @@ async def lifespan(app: FastAPI):
 
 # Initialize FastAPI
 app = FastAPI(lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Include all API routes
 app.include_router(router)
