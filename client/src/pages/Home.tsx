@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Button, Stack, Alert, AlertTitle, Collapse } from '@mui/material';
+import { Box, Typography, Button, Stack, Alert, AlertTitle, Collapse, CircularProgress } from '@mui/material';
 import PetsIcon from '@mui/icons-material/Pets';
 import FavoriteIcon from '@mui/icons-material/Favorite';
 import WifiOffIcon from '@mui/icons-material/WifiOff';
@@ -72,7 +72,17 @@ const Home: React.FC = () => {
         fetchUserData();
     }, []);
 
-    if (isLoading) return null; // Avoid flash of zero-state while fetching
+    if (isLoading) {
+        return (
+            <Box sx={{ display: 'flex', flexDirection: 'column', height: '80vh', alignItems: 'center', justifyContent: 'center', px: 3 }}>
+                <CircularProgress size={48} sx={{ color: 'primary.main', mb: 3 }} />
+                <Typography variant="h6" color="text.primary" sx={{ fontWeight: 'bold', mb: 1 }}>Connecting to Server...</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', maxWidth: '300px' }}>
+                    If the server was asleep, this may take up to 50 seconds to boot up. Please do not close the app!
+                </Typography>
+            </Box>
+        );
+    }
 
     return (
         <PullToRefresh onRefresh={handleRefresh} pullingContent=""

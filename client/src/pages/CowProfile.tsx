@@ -95,8 +95,12 @@ const CowProfile: React.FC = () => {
 
     if (isLoading) {
         return (
-            <Box sx={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <CircularProgress />
+            <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', px: 3 }}>
+                <CircularProgress size={48} sx={{ color: 'primary.main', mb: 3 }} />
+                <Typography variant="h6" color="text.primary" sx={{ fontWeight: 'bold', mb: 1 }}>Loading Profile...</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', maxWidth: '300px' }}>
+                    Server may be booting up, please hold on and do not close the app!
+                </Typography>
             </Box>
         );
     }

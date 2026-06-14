@@ -145,8 +145,12 @@ export const GlobalProcessingOverlay: React.FC = () => {
                         {title}
                     </Typography>
 
-                    <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.7)', textAlign: 'center', px: { xs: 2, sm: 4 }, mb: 4, fontSize: { xs: '0.875rem', sm: '1rem' } }}>
+                    <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.7)', textAlign: 'center', px: { xs: 2, sm: 4 }, mb: 2, fontSize: { xs: '0.875rem', sm: '1rem' } }}>
                         {status}
+                    </Typography>
+
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)', textAlign: 'center', px: { xs: 2, sm: 4 }, mb: 4, fontStyle: 'italic', maxWidth: '300px', fontSize: '0.75rem' }}>
+                        Please be patient and do not close the app. This AI process may take about 10-12 minutes to securely analyze and validate the data.
                     </Typography>
 
                     {!hideCancel && (

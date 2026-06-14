@@ -134,7 +134,15 @@ const MyCows: React.FC = () => {
 
                 {/* Cow List */}
                 <Stack spacing={2}>
-                    {isLoading && <Typography align="center" mt={4}>Loading cattle...</Typography>}
+                    {isLoading && (
+                        <Box sx={{ py: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+                            <CircularProgress size={40} sx={{ mb: 2 }} />
+                            <Typography variant="body1" color="text.primary" fontWeight="bold">Fetching your herd...</Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, maxWidth: '250px' }}>
+                                Server may be booting up, please hold on and do not close the app!
+                            </Typography>
+                        </Box>
+                    )}
                     
                     {nonDisputedCows.map((cow, index) => {
                         const isLastItem = nonDisputedCows.length === index + 1;
