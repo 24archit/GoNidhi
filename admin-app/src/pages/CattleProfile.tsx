@@ -8,6 +8,7 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import PullToRefresh from 'react-simple-pull-to-refresh';
 
 import { API_BASE } from '@ama-gau-dhana/shared';
 
@@ -60,13 +61,13 @@ export default function CattleProfile() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [telemetryOpen, setTelemetryOpen] = useState(false);
-  const [telemetryLog, setTelemetryLog] = useState<any>(null);
+  const [telemetryLog, setTelemetryLog] = useState<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
   const [loadingTelemetry, setLoadingTelemetry] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const [editOpen, setEditOpen] = useState(false);
-  const [editData, setEditData] = useState<any>({});
-  const [initialEditData, setInitialEditData] = useState<any>({});
+  const [editData, setEditData] = useState<any>({}); // eslint-disable-line @typescript-eslint/no-explicit-any
+  const [initialEditData, setInitialEditData] = useState<any>({}); // eslint-disable-line @typescript-eslint/no-explicit-any
   const [savingEdit, setSavingEdit] = useState(false);
 
   const handleEditOpen = () => {
@@ -110,7 +111,7 @@ export default function CattleProfile() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [editOpen, isModified]);
 
-  const handleEditClose = (_?: any, reason?: string) => {
+  const handleEditClose = (_?: unknown, reason?: string) => {
     if (savingEdit) return; // Completely ignore close attempts if API is running
     
     if (reason === 'backdropClick' && isModified) {
@@ -148,7 +149,7 @@ export default function CattleProfile() {
       queryClient.invalidateQueries({ queryKey: ['cattle'] });
       setDeleteConfirmOpen(false);
       navigate('/cattle');
-    } catch (err: any) {
+    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
       if (err.response && err.response.status === 404) {
         // The cattle was already deleted (e.g. via background script or another session)
         setDeleteConfirmOpen(false);
@@ -180,7 +181,7 @@ export default function CattleProfile() {
     }
   };
 
-  const { data: cattle, isLoading: loading } = useQuery({
+  const { data: cattle, isLoading: loading, refetch } = useQuery({
     queryKey: ['cattle', id],
     queryFn: async () => {
       const res = await axios.get(`${API_BASE}/api/admin/cattle/${id}`);
@@ -210,7 +211,7 @@ export default function CattleProfile() {
     );
   }
 
-  const photos = Object.entries(cattle.photos || {}).filter(([_, url]) => !!url);
+  const photos = Object.entries(cattle.photos || {}).filter(([, url]) => !!url);
 
   // --- Derived Secondary Information ---
   let exactAge = 'N/A';
@@ -247,6 +248,7 @@ export default function CattleProfile() {
   }
 
   return (
+    <PullToRefresh onRefresh={async () => { await refetch(); }} pullingContent="" maxPullDownDistance={100} resistance={2}>
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Button 
@@ -701,8 +703,8 @@ export default function CattleProfile() {
             </Grid>
             
             <Grid size={{ xs: 12 }} sx={{ mt: 1, display: 'flex', gap: 4 }}>
-              <FormControlLabel control={<Switch checked={editData.isSick} onChange={(e: any) => setEditData({...editData, isSick: e.target.checked})} color="error" />} label="Mark as Sick" />
-              <FormControlLabel control={<Switch checked={editData.isDispute} onChange={(e: any) => setEditData({...editData, isDispute: e.target.checked})} color="warning" />} label="Mark as Disputed" />
+              <FormControlLabel control={<Switch checked={editData.isSick} onChange={(e: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) => setEditData({...editData, isSick: e.target.checked})} color="error" />} label="Mark as Sick" />
+              <FormControlLabel control={<Switch checked={editData.isDispute} onChange={(e: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) => setEditData({...editData, isDispute: e.target.checked})} color="warning" />} label="Mark as Disputed" />
             </Grid>
           </Grid>
           <Backdrop
@@ -721,5 +723,6 @@ export default function CattleProfile() {
         </DialogActions>
       </Dialog>
     </Box>
+    </PullToRefresh>
   );
 }

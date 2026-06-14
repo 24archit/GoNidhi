@@ -48,7 +48,7 @@ const Login: React.FC = () => {
                 // navigate is removed here. AnimatedRoutes will automatically unmount Login and Redirect to / 
                 // when isAuthenticated flips to true. This stops the race condition.
             }
-        } catch (err: any) {
+        } catch (err: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
             console.error('Login API Error:', err);
             setError(err.response?.data?.message || 'Unable to connect to server. Check your network.');
         } finally {

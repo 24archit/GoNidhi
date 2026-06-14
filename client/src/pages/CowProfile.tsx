@@ -47,6 +47,7 @@ import { getCowProfileAPI } from '../apis/apis';
 import { getImageUrl } from '@ama-gau-dhana/shared';
 import { CircularProgress } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
+import PullToRefresh from 'react-simple-pull-to-refresh';
 
 const CowProfile: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -80,7 +81,7 @@ const CowProfile: React.FC = () => {
         return () => window.removeEventListener('popstate', handlePopState);
     }, [lightboxOpen]);
 
-    const { data: cowDataResponse, isLoading, error } = useQuery({
+    const { data: cowDataResponse, isLoading, error, refetch } = useQuery({
         queryKey: ['cowProfile', id],
         queryFn: () => getCowProfileAPI(id as string),
         enabled: !!id,
@@ -114,7 +115,12 @@ const CowProfile: React.FC = () => {
         );
     }
 
+    const handleRefresh = async () => {
+        await refetch();
+    };
+
     return (
+        <PullToRefresh onRefresh={handleRefresh} pullingContent="" maxPullDownDistance={100} resistance={2} backgroundColor="#F4F7F4">
         <Container maxWidth="sm" sx={{ p: 0, pb: 10 }}>
             {/* 1. HERO IMAGE HEADER */}
             <Box sx={{ position: 'relative', height: 240, bgcolor: '#eee' }}>
@@ -309,6 +315,7 @@ const CowProfile: React.FC = () => {
             </Dialog>
 
         </Container>
+        </PullToRefresh>
     );
 };
 

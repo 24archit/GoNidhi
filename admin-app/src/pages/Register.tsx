@@ -91,7 +91,7 @@ const Register: React.FC = () => {
                 login(response.data.token, response.data.user);
                 navigate('/', { replace: true });
             }
-        } catch (err: any) {
+        } catch (err: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
             console.error('Registration API Error:', err);
             setError(err.response?.data?.message || 'Unable to connect to server. Check your network.');
         } finally {

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import PullToRefresh from 'react-simple-pull-to-refresh';
 import {
   Box, Typography, Paper, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, TablePagination, CircularProgress, Avatar, Alert, AlertTitle, Button
@@ -35,8 +36,13 @@ export default function PendingCattle() {
   const cattle = data?.cattle || [];
   const total = data?.total || 0;
 
+  const handleRefresh = async () => {
+    await refetch();
+  };
+
   return (
-    <Box>
+    <PullToRefresh onRefresh={handleRefresh} pullingContent="" maxPullDownDistance={100} resistance={2}>
+      <Box>
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
         <Typography variant="h4" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
           Pending Registrations
@@ -59,7 +65,7 @@ export default function PendingCattle() {
 
       {isError && (
         <Alert severity="error" sx={{ mb: 3 }}>
-          Failed to load pending cattle: {(error as any).message}
+          Failed to load pending cattle: {(error as any).message /* eslint-disable-line @typescript-eslint/no-explicit-any */}
         </Alert>
       )}
 
@@ -74,7 +80,7 @@ export default function PendingCattle() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {cattle.map((cow: any) => (
+              {cattle.map((cow: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) => (
                 <TableRow
                   hover
                   key={cow._id}
@@ -140,5 +146,6 @@ export default function PendingCattle() {
         />
       </Paper>
     </Box>
+    </PullToRefresh>
   );
 }

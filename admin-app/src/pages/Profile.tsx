@@ -42,7 +42,7 @@ export default function Profile() {
               <PhoneIcon sx={{ color: 'primary.main', mr: 2 }} />
               <Box>
                 <Typography variant="caption" color="text.secondary">Contact Number</Typography>
-                <Typography variant="body1" sx={{ fontWeight: '500' }}>{(user as any)?.contact?.phone || 'N/A'}</Typography>
+                <Typography variant="body1" sx={{ fontWeight: '500' }}>{(user as any /* eslint-disable-line @typescript-eslint/no-explicit-any */)?.contact?.phone || 'N/A'}</Typography>
               </Box>
             </Box>
           </Grid>

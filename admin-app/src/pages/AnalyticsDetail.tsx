@@ -16,7 +16,9 @@ import axios from 'axios';
 import { useNavigate, useParams } from 'react-router-dom';
 import { API_BASE } from '@ama-gau-dhana/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import PullToRefresh from 'react-simple-pull-to-refresh';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const renderVal = (v: any) => v == null ? <span style={{ color: '#aaa' }}>N/A</span> : <b>{typeof v === 'number' && !Number.isInteger(v) ? v.toFixed(2) : v}</b>;
 
 const getStatusStyle = (status: string) => {
@@ -159,9 +161,7 @@ export default function AnalyticsDetail() {
   const queryClient = useQueryClient();
   const [previewImg, setPreviewImg] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [copiedId, setCopiedId] = useState(false);
-
-  const { data: log, isLoading } = useQuery({
+  const { data: log, isLoading, refetch } = useQuery({
     queryKey: ['analyticsDetail', id],
     queryFn: async () => {
       const res = await axios.get(`${API_BASE}/api/admin/analytics/ai-logs/${id}`);
@@ -176,6 +176,7 @@ export default function AnalyticsDetail() {
     const finalVal = log.isAiOutcomeCorrect === newVal ? null : newVal;
 
     // Optimistic update
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     queryClient.setQueryData(['analyticsDetail', id], (old: any) => ({ ...old, isAiOutcomeCorrect: finalVal }));
 
     try {
@@ -195,12 +196,6 @@ export default function AnalyticsDetail() {
     } catch {
       alert('Failed to delete log.');
     }
-  };
-
-  const handleCopyId = () => {
-    navigator.clipboard.writeText(id || '');
-    setCopiedId(true);
-    setTimeout(() => setCopiedId(false), 2000);
   };
 
   if (isLoading) {
@@ -240,7 +235,12 @@ export default function AnalyticsDetail() {
     }
   }
 
+  const handleRefresh = async () => {
+    await refetch();
+  };
+
   return (
+    <PullToRefresh onRefresh={handleRefresh} pullingContent="" maxPullDownDistance={100} resistance={2}>
     <Box sx={{ width: '100%', overflowX: 'hidden' }}>
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
@@ -529,5 +529,6 @@ export default function AnalyticsDetail() {
         </Box>
       </Dialog>
     </Box>
+    </PullToRefresh>
   );
 }

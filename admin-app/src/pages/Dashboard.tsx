@@ -1,5 +1,6 @@
 import { Grid, Paper, Typography, Box, CircularProgress } from '@mui/material';
 import axios from 'axios';
+import PullToRefresh from 'react-simple-pull-to-refresh';
 import { People, Pets, Gavel, Warning } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 
@@ -16,7 +17,7 @@ interface SystemStats {
 export default function Dashboard() {
   const { user } = useAuth();
   
-  const { data: stats, isLoading: loading } = useQuery({
+  const { data: stats, isLoading: loading, refetch } = useQuery({
     queryKey: ['dashboardStats'],
     queryFn: async () => {
       const response = await axios.get(`${API_BASE}/api/admin/analytics/stats`);
@@ -36,8 +37,13 @@ export default function Dashboard() {
     { title: 'Total Disputes', value: stats?.totalDisputes || 0, icon: <Gavel fontSize="large" color="secondary" /> },
   ];
 
+  const handleRefresh = async () => {
+    await refetch();
+  };
+
   return (
-    <Box>
+    <PullToRefresh onRefresh={handleRefresh} pullingContent="" maxPullDownDistance={100} resistance={2}>
+      <Box>
       <Box sx={{ mb: 3 }}>
         <Typography variant="h5" sx={{ fontWeight: 800, color: 'text.primary' }}>
           Welcome, <Box component="span" sx={{ color: 'primary.main' }}>{user?.name || 'Admin'}</Box>
@@ -76,6 +82,7 @@ export default function Dashboard() {
           </Typography>
         </Paper>
       </Box>
-    </Box>
+      </Box>
+    </PullToRefresh>
   );
 }

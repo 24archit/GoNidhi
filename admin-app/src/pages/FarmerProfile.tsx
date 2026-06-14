@@ -8,6 +8,7 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import PullToRefresh from 'react-simple-pull-to-refresh';
 
 import { API_BASE } from '@ama-gau-dhana/shared';
 
@@ -41,8 +42,8 @@ export default function FarmerProfile() {
   const queryClient = useQueryClient();
 
   const [editOpen, setEditOpen] = useState(false);
-  const [editData, setEditData] = useState<any>({});
-  const [initialEditData, setInitialEditData] = useState<any>({});
+  const [editData, setEditData] = useState<any>({}); // eslint-disable-line @typescript-eslint/no-explicit-any
+  const [initialEditData, setInitialEditData] = useState<any>({}); // eslint-disable-line @typescript-eslint/no-explicit-any
   const [savingEdit, setSavingEdit] = useState(false);
 
   const { data: farmer, isLoading: loading } = useQuery({
@@ -114,7 +115,7 @@ export default function FarmerProfile() {
     setEditOpen(true);
   };
 
-  const handleEditClose = (_?: any, reason?: string) => {
+  const handleEditClose = (_?: unknown, reason?: string) => {
     if (savingEdit) return; 
     
     if (reason === 'backdropClick' && isModified) {
@@ -188,7 +189,15 @@ export default function FarmerProfile() {
   const daysActive = Math.floor((new Date().getTime() - new Date(farmer.createdAt).getTime()) / (1000 * 3600 * 24));
   const cowsPerMonth = daysActive > 0 ? ((totalCattle / daysActive) * 30).toFixed(1) : totalCattle;
 
+  const handleRefresh = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['farmer', id] }),
+      queryClient.invalidateQueries({ queryKey: ['farmer-cattle', id] })
+    ]);
+  };
+
   return (
+    <PullToRefresh onRefresh={handleRefresh} pullingContent="" maxPullDownDistance={100} resistance={2}>
     <Box>
       <Button 
         startIcon={<ArrowBackIcon />} 
@@ -389,9 +398,9 @@ export default function FarmerProfile() {
               <List sx={{ pt: 0 }}>
                 {activities.map((activity) => (
                   <ListItem key={activity.id} alignItems="flex-start" sx={{ px: 0 }}>
-                    <ListItemIcon sx={{ minWidth: 40, mt: 0.5 }}>
-                      <CheckCircleIcon color={activity.status as any} />
-                    </ListItemIcon>
+                      <ListItemIcon sx={{ minWidth: 40, mt: 0.5 }}>
+                        <CheckCircleIcon color={activity.status as any /* eslint-disable-line @typescript-eslint/no-explicit-any */} />
+                      </ListItemIcon>
                     <ListItemText 
                       primary={
                         <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
@@ -475,5 +484,6 @@ export default function FarmerProfile() {
         </DialogActions>
       </Dialog>
     </Box>
+    </PullToRefresh>
   );
 }

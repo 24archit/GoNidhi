@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useState } from 'react';
+import PullToRefresh from 'react-simple-pull-to-refresh';
 import { 
   Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, 
   TableHead, TableRow, TablePagination, Chip, Button, Dialog, DialogTitle, DialogContent, DialogActions, Select, MenuItem, FormControl, InputLabel, CircularProgress
@@ -15,7 +16,7 @@ export default function Disputes() {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   
   const [resolveOpen, setResolveOpen] = useState(false);
-  const [selectedDispute, setSelectedDispute] = useState<any>(null);
+  const [selectedDispute, setSelectedDispute] = useState<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
   const [resolutionStatus, setResolutionStatus] = useState('resolved');
   const [assignedFarmerId, setAssignedFarmerId] = useState('');
 
@@ -50,8 +51,13 @@ export default function Disputes() {
     }
   };
 
+  const handleRefresh = async () => {
+    await refetch();
+  };
+
   return (
-    <Box>
+    <PullToRefresh onRefresh={handleRefresh} pullingContent="" maxPullDownDistance={100} resistance={2}>
+      <Box>
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
         <Typography variant="h4" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
           Dispute Management
@@ -188,5 +194,6 @@ export default function Disputes() {
         </DialogActions>
       </Dialog>
     </Box>
+    </PullToRefresh>
   );
 }

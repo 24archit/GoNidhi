@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
+import PullToRefresh from 'react-simple-pull-to-refresh';
 import { 
   Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, 
   TableHead, TableRow, TablePagination, TextField, InputAdornment, Chip, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, DialogContentText, Button, CircularProgress, Avatar
@@ -10,15 +11,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { API_BASE } from '@ama-gau-dhana/shared';
 
-interface Farmer {
-  _id: string;
-  name: string;
-  contact: { phone: string };
-  location: { state: string, district: string, village: string };
-  cows: string[];
-  createdAt: string;
-  profilePicture?: string;
-}
+
 
 export default function Farmers() {
   const queryClient = useQueryClient();
@@ -91,8 +84,13 @@ export default function Farmers() {
     setPage(0);
   };
 
+  const handleRefresh = async () => {
+    await refetch();
+  };
+
   return (
-    <Box>
+    <PullToRefresh onRefresh={handleRefresh} pullingContent="" maxPullDownDistance={100} resistance={2}>
+      <Box>
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
         <Typography variant="h4" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
           Farmers Management
@@ -237,5 +235,6 @@ export default function Farmers() {
       </Dialog>
 
     </Box>
+    </PullToRefresh>
   );
 }

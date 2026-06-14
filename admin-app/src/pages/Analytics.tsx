@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Box, Typography, Paper, Grid, Chip, Button, Collapse, FormGroup, IconButton,
-  FormControlLabel, Checkbox, TextField, InputAdornment, Badge, Tooltip, FormControl, Select, MenuItem,
+  FormControlLabel, Checkbox, Badge, Tooltip, FormControl, Select, MenuItem,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination, Avatar
 } from '@mui/material';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import DownloadIcon from '@mui/icons-material/Download';
-import SearchIcon from '@mui/icons-material/Search';
+
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ThumbUpIcon from '@mui/icons-material/ThumbUp';
 import ThumbDownIcon from '@mui/icons-material/ThumbDown';
@@ -17,6 +17,7 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE } from '@ama-gau-dhana/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import PullToRefresh from 'react-simple-pull-to-refresh';
 
 // ─── Status helpers ────────────────────────────────────────────────────────────
 const getStatusStyle = (status: string) => {
@@ -83,7 +84,7 @@ function CorrectnessToggle({ value, onChange }: { value: boolean | null | undefi
 }
 
 function LogRow({ log, onCorrectnessChange, onClick }: {
-  log: any;
+  log: any; // eslint-disable-line @typescript-eslint/no-explicit-any
   onCorrectnessChange: (id: string, val: boolean | null) => void;
   onClick: () => void;
 }) {
@@ -196,7 +197,7 @@ export default function Analytics() {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(50);
 
-  const { data, isLoading, isFetching, refetch, isRefetching } = useQuery({
+  const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['analytics-logs', appliedFilters, page, rowsPerPage],
     queryFn: async () => {
       const res = await axios.get(`${API_BASE}/api/admin/analytics/ai-logs`, {
@@ -219,11 +220,12 @@ export default function Analytics() {
 
   // Optimistic correctness update in list
   const handleCorrectnessChange = async (id: string, val: boolean | null) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     queryClient.setQueryData(['analytics-logs', appliedFilters, page, rowsPerPage], (oldData: any) => {
       if (!oldData) return oldData;
       return {
         ...oldData,
-        data: oldData.data.map((log: any) => log._id === id ? { ...log, isAiOutcomeCorrect: val } : log)
+        data: oldData.data.map((log: any) => log._id === id ? { ...log, isAiOutcomeCorrect: val } : log) // eslint-disable-line @typescript-eslint/no-explicit-any
       };
     });
 
@@ -260,6 +262,7 @@ export default function Analytics() {
   const activeFilterCount = appliedFilters.statuses.length + appliedFilters.types.length + (appliedFilters.year ? 1 : 0);
 
   return (
+    <PullToRefresh onRefresh={async () => { await refetch(); }} pullingContent="" maxPullDownDistance={100} resistance={2}>
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2, mb: 3 }}>
         <Box>
@@ -408,7 +411,7 @@ export default function Analytics() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {logs.map((log: any) => (
+              {logs.map((log: any) => ( // eslint-disable-line @typescript-eslint/no-explicit-any
                 <LogRow
                   key={log._id}
                   log={log}
@@ -449,6 +452,7 @@ export default function Analytics() {
         />
       </Paper>
     </Box>
+    </PullToRefresh>
   );
 }
 
