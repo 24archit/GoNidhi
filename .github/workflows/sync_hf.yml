@@ -38,8 +38,8 @@ jobs:
           cd ..
           
           # Sync dl-api files to the hf-space folder.
-          # We explicitly EXCLUDE .git/, .gitattributes, and model/ so they are not deleted.
-          rsync -av --delete --exclude='.git/' --exclude='.gitattributes' --exclude='model/' dl-api/ hf-space/
+          # We explicitly EXCLUDE .git/, .gitattributes, model/ and models/ so they are not deleted.
+          rsync -av --delete --exclude='.git/' --exclude='.gitattributes' --exclude='model/' --exclude='models/' dl-api/ hf-space/
           
           cd hf-space
           # Commit and push changes to HF Space

@@ -60,6 +60,7 @@ uploads
 # Ignore specific dl-api files and folders
 dl-api/notebook/
 dl-api/model/
+dl-api/models/
 dl-api/.venv/
 dl-api/modal_app.py
 dl-api/.env
