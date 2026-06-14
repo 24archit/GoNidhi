@@ -8,6 +8,11 @@ EXPRESS_WEBHOOK_URL = os.getenv(
     "http://localhost:2424/api/farmer/cattle/webhook/dl-api-complete"
 )
 
+WEBHOOK_SECRET = os.getenv(
+    "WEBHOOK_SECRET",
+    "fallback_webhook_secret_for_dev_4321"
+)
+
 LOCAL_UPLOAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "server", "uploads"))
 
 EMBEDDING_MODEL_PATH = os.getenv("EMBEDDING_MODEL_PATH", None)

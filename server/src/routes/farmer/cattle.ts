@@ -2,12 +2,13 @@ import express from 'express';
 import multer from 'multer';
 import { registerCow, getMyCattle, getCowProfile, searchCow, handleDlApiWebhook, deleteCow } from '../../controllers/farmer/cattle';
 import { requireAuth } from '../../middleware/auth';
+import { verifyWebhookSignature } from '../../middleware/webhookAuth';
 
 const upload = multer({ storage: multer.memoryStorage() });
 const router = express.Router();
 
 // Webhook for DL-API (should use an API key in production, skipped for brevity but easily added)
-router.post('/webhook/dl-api-complete', handleDlApiWebhook);
+router.post('/webhook/dl-api-complete', verifyWebhookSignature, handleDlApiWebhook);
 
 // Apply auth middleware to all routes in this file
 router.use(requireAuth);

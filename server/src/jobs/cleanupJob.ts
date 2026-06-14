@@ -2,9 +2,14 @@ import { Cattle } from '../models/Cattel';
 import { User } from '../models/User';
 import { cleanupCowCloudResources } from '../services/cattleService';
 
+let cleanupRunning = false;
+
 export const startCleanupJob = () => {
     console.log('[Jobs] Starting Orphaned Cow Cleanup Job (1h interval)');
-    setInterval(async () => {
+    
+    const runCleanup = async () => {
+        if (cleanupRunning) return;
+        cleanupRunning = true;
         try {
             const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
             const orphanedCows = await Cattle.find({
@@ -26,6 +31,11 @@ export const startCleanupJob = () => {
             }
         } catch (error) {
             console.error('[CleanupJob] Error during orphaned cow cleanup:', error);
+        } finally {
+            cleanupRunning = false;
         }
-    }, 60 * 60 * 1000); // 1 hour
+    };
+
+    runCleanup();
+    setInterval(runCleanup, 60 * 60 * 1000); // 1 hour
 };
