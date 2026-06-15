@@ -8,6 +8,38 @@ from services.fusion_service import compute_cosine_similarity, evaluate_biometri
 from services.tournament_service import run_biometric_tournament, compute_traditional_metrics
 from services.telemetry_builder import build_telemetry_payload
 
+def _raise_early_search_error(m_status: str, detail: str, req: SearchRequest, start_time: float, spoof_prob_muzzle=None, spoof_prob_face=None):
+    inference_time = (time.time() - start_time) * 1000
+    telemetry_data = build_telemetry_payload(
+        job_type="search",
+        cow_id=req.user_id,
+        farmer_id=req.user_id,
+        match_status=m_status,
+        inference_time=inference_time,
+        final_confidence=0.0,
+        matched_cow_id=None,
+        num_crops=0,
+        muzzle_url=req.muzzle_image_url,
+        face_url=req.face_image_url,
+        muzzle_crop_b64=None,
+        face_crop_b64=None,
+        muzzle_conf=0.0,
+        face_conf=0.0,
+        spoof_prob_muzzle=spoof_prob_muzzle,
+        spoof_prob_face=spoof_prob_face,
+        cow_name=None,
+        face_similarity_score=0.0,
+        muzzle_similarity_score=0.0,
+        verdict={"reason": detail},
+        matched_image_url=None,
+        matched_cow_name=None,
+        best_lg_matches=-1,
+        trad_metrics=None,
+        best_features=None,
+        xgb_score=None
+    )
+    raise HTTPException(status_code=400, detail={"message": detail, "telemetry": telemetry_data})
+
 async def _search_cow_impl(req: SearchRequest, fastapi_req: Request):
     try:
         muzzle_img = download_image(req.muzzle_image_url)
@@ -34,39 +66,9 @@ async def _search_cow_impl(req: SearchRequest, fastapi_req: Request):
         _, spoof_prob_face = glb.dl.is_spoof(face_img)
         
     if not is_cow_muzzle or not is_cow_face:
-         inference_time = (time.time() - start_time) * 1000
          m_status = "NOT_A_COW"
          detail = "Uploaded images do not appear to contain a cow."
-             
-         telemetry_data = build_telemetry_payload(
-             job_type="search",
-             cow_id=req.user_id,
-             farmer_id=req.user_id,
-             match_status=m_status,
-             inference_time=inference_time,
-             final_confidence=0.0,
-             matched_cow_id=None,
-             num_crops=0,
-             muzzle_url=req.muzzle_image_url,
-             face_url=req.face_image_url,
-             muzzle_crop_b64=None,
-             face_crop_b64=None,
-             muzzle_conf=0.0,
-             face_conf=0.0,
-             spoof_prob_muzzle=spoof_prob_muzzle,
-             spoof_prob_face=spoof_prob_face,
-             cow_name=None,
-             face_similarity_score=0.0,
-             muzzle_similarity_score=0.0,
-             verdict={"reason": detail},
-             matched_image_url=None,
-             matched_cow_name=None,
-             best_lg_matches=-1,
-             trad_metrics=None,
-             best_features=None,
-             xgb_score=None
-         )
-         raise HTTPException(status_code=400, detail={"message": detail, "telemetry": telemetry_data})
+         _raise_early_search_error(m_status, detail, req, start_time, spoof_prob_muzzle, spoof_prob_face)
          
     if await fastapi_req.is_disconnected():
         print("Client disconnected after YOLO Cow Detection.")
@@ -78,39 +80,9 @@ async def _search_cow_impl(req: SearchRequest, fastapi_req: Request):
         face_muzzle_crop, face_muzzle_conf = (glb.dl.extract_biometric(face_img, part_type="muzzle") if face_img is not None else (None, 0.0))
         
     if muzzle_crop is None and face_crop is None and face_muzzle_crop is None:
-         inference_time = (time.time() - start_time) * 1000
          m_status = "NO_BIOMETRICS_DETECTED"
          detail = "Could not detect either a Face or Muzzle in search images."
-             
-         telemetry_data = build_telemetry_payload(
-             job_type="search",
-             cow_id=req.user_id,
-             farmer_id=req.user_id,
-             match_status=m_status,
-             inference_time=inference_time,
-             final_confidence=0.0,
-             matched_cow_id=None,
-             num_crops=0,
-             muzzle_url=req.muzzle_image_url,
-             face_url=req.face_image_url,
-             muzzle_crop_b64=None,
-             face_crop_b64=None,
-             muzzle_conf=0.0,
-             face_conf=0.0,
-             spoof_prob_muzzle=spoof_prob_muzzle,
-             spoof_prob_face=spoof_prob_face,
-             cow_name=None,
-             face_similarity_score=0.0,
-             muzzle_similarity_score=0.0,
-             verdict={"reason": detail},
-             matched_image_url=None,
-             matched_cow_name=None,
-             best_lg_matches=-1,
-             trad_metrics=None,
-             best_features=None,
-             xgb_score=None
-         )
-         raise HTTPException(status_code=400, detail={"message": detail, "telemetry": telemetry_data})
+         _raise_early_search_error(m_status, detail, req, start_time, spoof_prob_muzzle, spoof_prob_face)
          
     if await fastapi_req.is_disconnected():
         print("Client disconnected after Biometric Extraction.")

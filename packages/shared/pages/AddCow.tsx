@@ -730,16 +730,22 @@ export const AddCow: React.FC<AddCowProps> = ({ isAdmin = false }) => {
 
                 const pollInterval = setInterval(async () => {
                     pollAttempts++;
+                    if (pollAttempts >= maxPolls) {
+                        clearInterval(pollInterval);
+                        stopProcessing();
+                        setFeedback({ type: 'ERROR', title: 'Timeout', message: '...' });
+                        return;
+                    }
                     try {
                         const tokenKey = isAdmin ? 'adminToken' : 'jwt_token';
                         const { value: token } = await Preferences.get({ key: tokenKey });
 
                         const getCowEndpoint = isAdmin ? `${API_BASE}/api/admin/cattle/${cowId}` : `${API_BASE}/api/farmer/cattle/${cowId}`;
-                        
+
                         const cowResponse = await axios.get(getCowEndpoint, {
                             headers: { Authorization: `Bearer ${token}` }
                         });
-                        
+
                         const cowStatus = cowResponse?.data?.data?.aiMetadata?.status || cowResponse?.data?.aiMetadata?.status;
 
                         if (pollAttempts === 3) updateProgress(70, 'Running duplicate checks against entire database...');

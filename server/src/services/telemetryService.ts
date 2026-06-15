@@ -1,5 +1,6 @@
 import { AiLog } from '../models/AiLog';
 import { uploadBase64ToCloudinary, deleteFromCloudinary } from './cloudinaryService';
+import logger from '../utils/logger';
 
 const snakeToCamel = (str: string) => str.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
 
@@ -32,11 +33,11 @@ export const processTelemetry = async (telemetry: any, endpoint: string, success
                 endpoint
             });
         } catch (dbError) {
-            console.error('Failed to save AiLog to database. Rolling back telemetry images.', dbError);
+            logger.error('Failed to save AiLog to database. Rolling back telemetry images.', dbError);
             if (uploadedMuzzleCrop) deleteFromCloudinary(uploadedMuzzleCrop).catch(() => {});
             if (uploadedFaceCrop) deleteFromCloudinary(uploadedFaceCrop).catch(() => {});
         }
     } catch (err) {
-        console.error(`Failed to process telemetry from ${endpoint}:`, err);
+        logger.error(`Failed to process telemetry from ${endpoint}:`, err);
     }
 };

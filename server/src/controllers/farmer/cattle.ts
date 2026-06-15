@@ -3,11 +3,14 @@ import { Cattle } from '../../models/Cattel';
 import { User } from '../../models/User';
 import { Dispute } from '../../models/Dispute';
 import axios from 'axios';
+import mongoose from 'mongoose';
 import { uploadBufferToCloudinary, deleteFromCloudinary } from '../../services/cloudinaryService';
 import { asyncHandler } from '../../middleware/asyncHandler';
+import crypto from 'crypto';
 import { processTelemetry } from '../../services/telemetryService';
 import { createCattleRegistration, cleanupCowCloudResources } from '../../services/cattleService';
 import { dlApiClient } from '../../utils/dlApiClient';
+import logger from '../../utils/logger';
 
 interface AuthRequest extends Request {
     user?: { id: string; role: string; name: string };
@@ -45,7 +48,7 @@ export const getMyCattle = asyncHandler(async (req: Request, res: Response) => {
 
     const baseQuery: any = {
         farmerId: authReq.user.id,
-        'aiMetadata.status': { $ne: 'PENDING' }
+        'aiMetadata.status': { $nin: ['PENDING', 'PROCESSING_RESULT'] }
     };
 
     const [totalNonDisputed, totalPregnant, totalDisputed] = await Promise.all([
@@ -86,21 +89,31 @@ export const getMyCattle = asyncHandler(async (req: Request, res: Response) => {
     });
 });
 
-export const deleteCow = asyncHandler(async (req: Request, res: Response) => {
-    const authReq = req as AuthRequest;
-    if (!authReq.user) return res.status(401).json({ success: false, message: 'Unauthorized' });
 
-    const cowToDelete = await Cattle.findOne({ _id: authReq.params.id, farmerId: authReq.user.id });
-    if (!cowToDelete) return res.status(404).json({ success: false, message: 'Cow not found or unauthorized' });
 
-    await Cattle.findByIdAndDelete(authReq.params.id);
-    await User.findByIdAndUpdate(authReq.user.id, { $pull: { cows: authReq.params.id } }).catch(() => {});
-
-    // Run cleanup asynchronously in background to not block the response
-    cleanupCowCloudResources(cowToDelete);
-
-    res.status(200).json({ success: true, message: 'Cow deleted successfully' });
-});
+function getRejectionMessage(status: string, message?: string): string {
+    let userMessage = message ? message : `Registration failed due to: ${status}`;
+    if (!userMessage || userMessage === 'N/A' || userMessage.includes('Registration failed due to')) {
+        if (status === 'SPOOF_DETECTED_MUZZLE') {
+            userMessage = 'Registration failed: Spoofing detected in the Muzzle image. Make sure it is a real photo, not a screen or print.';
+        } else if (status === 'NO_MUZZLE_DETECTED_MUZZLE_IMAGE' || status === 'NO_MUZZLE_DETECTED') {
+            userMessage = 'Registration failed: Could not detect the muzzle clearly in the Muzzle profile image. Retake the Muzzle profile.';
+        } else if (status === 'NO_FACE_DETECTED') {
+            userMessage = 'Registration failed: Could not detect the face clearly in the Face profile image. Retake the Face profile.';
+        } else if (status === 'NO_BIOMETRICS_DETECTED') {
+            userMessage = 'Registration failed: Could not detect either a Face or Muzzle. Please retake the photos clearly.';
+        } else if (status === 'NOT_A_COW') {
+            userMessage = 'Registration failed: Images do not appear to contain a cow.';
+        } else if (status === 'DUPLICATE') {
+            userMessage = 'Registration failed: This cow is already registered.';
+        } else if (status === 'FAILED') {
+            userMessage = 'Registration failed: An unexpected error occurred while processing your request. Please try again.';
+        } else {
+            userMessage = `Registration failed: An unknown error occurred (${status}). Please try again.`;
+        }
+    }
+    return userMessage;
+}
 
 export const getCowProfile = asyncHandler(async (req: Request, res: Response) => {
     const authReq = req as AuthRequest;
@@ -111,24 +124,9 @@ export const getCowProfile = asyncHandler(async (req: Request, res: Response) =>
     if (!cow) {
         if (recentRejections.has(authReq.params.id)) {
             const rejectionData = recentRejections.get(authReq.params.id);
-            let failureStatus = typeof rejectionData === 'string' ? rejectionData : rejectionData?.status;
-            let userMessage = typeof rejectionData === 'object' && rejectionData?.message 
-                ? rejectionData.message 
-                : `Registration failed due to: ${failureStatus}`;
-            
-            if (!userMessage || userMessage.includes('Registration failed due to')) {
-                if (failureStatus === 'SPOOF_DETECTED_MUZZLE') {
-                    userMessage = 'Registration failed: Spoofing detected in the Muzzle image. Make sure it is a real photo, not a screen or print.';
-                } else if (failureStatus === 'NO_MUZZLE_DETECTED_MUZZLE_IMAGE' || failureStatus === 'NO_MUZZLE_DETECTED') {
-                    userMessage = 'Registration failed: Could not detect the muzzle clearly in the Muzzle profile image. Retake the Muzzle profile.';
-                } else if (failureStatus === 'NO_FACE_DETECTED') {
-                    userMessage = 'Registration failed: Could not detect the face clearly in the Face profile image. Retake the Face profile.';
-                } else if (failureStatus === 'NO_BIOMETRICS_DETECTED') {
-                    userMessage = 'Registration failed: Could not detect either a Face or Muzzle. Please retake the photos clearly.';
-                } else if (failureStatus === 'DUPLICATE') {
-                    userMessage = 'Registration failed: This cow is already registered.';
-                }
-            }
+            const failureStatus = typeof rejectionData === 'string' ? rejectionData : rejectionData?.status;
+            const messageStr = typeof rejectionData === 'object' ? rejectionData?.message : undefined;
+            const userMessage = getRejectionMessage(failureStatus, messageStr);
             
             return res.status(400).json({ 
                 success: false, 
@@ -144,18 +142,22 @@ export const getCowProfile = asyncHandler(async (req: Request, res: Response) =>
             const statusRes = await dlApiClient.get(`/status/${cow._id}`);
             
             if (statusRes.data.status === 'COMPLETED') {
-                console.log(`[DL-API Sync] Polled DL-API and found COMPLETED result for cow ${cow._id}. Processing locally.`);
+                logger.info(`[DL-API Sync] Polled DL-API and found COMPLETED result for cow ${cow._id}. Processing locally.`);
                 await processDlApiResult(statusRes.data.result);
                 
                 // Fetch the updated cow or return 404 if it was a failure/duplicate and got deleted
                 const updatedCow = await Cattle.findById(cow._id);
                 if (!updatedCow) {
                     const rejectionData = recentRejections.get(cow._id.toString());
+                    const failureStatus = rejectionData ? (rejectionData as any).status : 'FAILED';
+                    const messageStr = rejectionData ? (rejectionData as any).message : undefined;
+                    const userMessage = getRejectionMessage(failureStatus, messageStr);
+                    
                     return res.status(400).json({ 
                         success: false, 
                         isRejected: true,
-                        status: rejectionData ? (rejectionData as any).status : 'FAILED',
-                        message: rejectionData ? (rejectionData as any).message : 'Registration failed.'
+                        status: failureStatus,
+                        message: userMessage
                     });
                 }
                 cow = updatedCow;
@@ -164,13 +166,20 @@ export const getCowProfile = asyncHandler(async (req: Request, res: Response) =>
         } catch (err: any) {
             // If the DL-API returns a 404, the job is no longer active (crashed or lost).
             if (err.response && err.response.status === 404) {
-                console.log(`[DL-API Sync] Cow ${cow._id} is PENDING but DL-API has no record of it. Discarding.`);
+                logger.info(`[DL-API Sync] Cow ${cow._id} is PENDING but DL-API has no record of it. Discarding.`);
                 
-                // Background cleanup
-                cleanupCowCloudResources(cow);
+                // Background cleanup only if we successfully delete
+                const deletedCow = await Cattle.findOneAndDelete({ _id: cow._id, 'aiMetadata.status': 'PENDING' });
                 
-                await Cattle.findByIdAndDelete(cow._id);
-                await User.findByIdAndUpdate(authReq.user.id, { $pull: { cows: cow._id } });
+                if (deletedCow) {
+                    cleanupCowCloudResources(deletedCow);
+                    
+                    const session = await mongoose.startSession();
+                    await session.withTransaction(async () => {
+                        await User.findByIdAndUpdate(authReq.user.id, { $pull: { cows: cow._id } }, { session });
+                    });
+                    session.endSession();
+                }
                 
                 return res.status(400).json({ 
                     success: false, 
@@ -180,6 +189,13 @@ export const getCowProfile = asyncHandler(async (req: Request, res: Response) =>
                 });
             }
         }
+    }
+
+    // Mask internal PROCESSING_RESULT status from client so it continues polling instead of crashing
+    if (cow.aiMetadata && cow.aiMetadata.status === 'PROCESSING_RESULT') {
+        const cowObj = cow.toObject ? cow.toObject() : cow;
+        cowObj.aiMetadata.status = 'PENDING';
+        return res.status(200).json({ success: true, data: cowObj });
     }
 
     res.status(200).json({
@@ -256,11 +272,15 @@ export const searchCow = asyncHandler(async (req: Request, res: Response) => {
         if (muzzleCloudinary) deleteFromCloudinary(muzzleCloudinary).catch(() => {});
 
         if (axios.isCancel(dlError) || dlError.name === 'AbortError' || dlError.name === 'CanceledError') {
-            console.log('Client disconnected, canceled DL API search request.');
+            logger.info('Client disconnected, canceled DL API search request.');
             return res.status(499).json({ success: false, message: 'Client Closed Request' });
         }
-        console.error('Error calling DL API search:', dlError?.response?.data || dlError.message);
-        const errorDetail = dlError?.response?.data?.detail || 'AI Service unavailable or could not process images.';
+        logger.error('Error calling DL API search:', dlError?.response?.data || dlError.message);
+        let errorDetail = dlError?.response?.data?.detail;
+        if (typeof errorDetail === 'object' && errorDetail?.message) {
+            errorDetail = errorDetail.message;
+        }
+        errorDetail = errorDetail || 'AI Service unavailable or could not process images.';
         return res.status(404).json({ success: false, message: errorDetail });
     }
 });
@@ -274,66 +294,111 @@ export async function processDlApiResult(payload: any) {
 
     if (!cow_id) return false;
 
-    const cow = await Cattle.findById(cow_id);
-    if (!cow) return false;
-
-    if (status === 'DUPLICATE') {
-        await Cattle.findByIdAndDelete(cow_id);
-        await User.findByIdAndUpdate(farmer_id, { $pull: { cows: cow_id } });
-        recentRejections.set(cow_id, { status, message: error_message } as any);
-        setTimeout(() => recentRejections.delete(cow_id), REJECTION_TTL_MS);
-        
-        cleanupCowCloudResources(cow);
-        console.log(`[Sync] Duplicate cow deleted for cow_id: ${cow_id}`);
-    } else if (status === 'DISPUTE') {
-        cow.isDispute = true;
-        cow.aiMetadata.isRegistered = true;
-        cow.aiMetadata.status = status;
-        await cow.save();
-
-        let originalFarmerId = null;
-        if (matched_cow_id) {
-            await Cattle.findByIdAndUpdate(matched_cow_id, { isDispute: true });
-            const matchedCow = await Cattle.findById(matched_cow_id);
-            if (matchedCow) {
-                originalFarmerId = matchedCow.farmerId;
-            }
-        }
-
-        if (originalFarmerId) {
-            const dispute = new Dispute({
-                cattleId: cow_id,
-                originalFarmerId: originalFarmerId,
-                attemptingFarmerId: farmer_id,
-                status: 'pending',
-                reason: error_message || 'Duplicate Registration Attempt Detected via AI Biometrics'
-            });
-            await dispute.save();
-        }
-
-        console.log(`[Sync] Dispute marked for cow_id: ${cow_id} and matched_cow_id: ${matched_cow_id}`);
-    } else if (status === 'SUCCESS') {
-        cow.aiMetadata.isRegistered = true;
-        cow.aiMetadata.status = status;
-        await cow.save();
-        console.log(`[Sync] Successfully registered cow_id: ${cow_id}`);
-    } else {
-        await Cattle.findByIdAndDelete(cow_id);
-        await User.findByIdAndUpdate(farmer_id, { $pull: { cows: cow_id } });
-        recentRejections.set(cow_id, { status, message: error_message } as any);
-        setTimeout(() => recentRejections.delete(cow_id), REJECTION_TTL_MS);
-        
-        cleanupCowCloudResources(cow);
-        console.log(`[Sync] Failed AI processing, cow deleted for cow_id: ${cow_id}`);
-    }
+    // Atomically find and lock the cow for processing to prevent race conditions
+    // between DL-API webhook and farmer's profile query.
+    const cow = await Cattle.findOneAndUpdate(
+        { _id: cow_id, 'aiMetadata.status': 'PENDING' },
+        { $set: { 'aiMetadata.status': 'PROCESSING_RESULT' } },
+        { new: true }
+    );
     
-    return true;
+    if (!cow) {
+        logger.info(`[Sync] Cow ${cow_id} already processed or not pending.`);
+        return false;
+    }
+
+    try {
+        if (status === 'DUPLICATE') {
+            const session = await mongoose.startSession();
+            await session.withTransaction(async () => {
+                await Cattle.findByIdAndDelete(cow_id, { session });
+                await User.findByIdAndUpdate(farmer_id, { $pull: { cows: cow_id } }, { session });
+            });
+            session.endSession();
+            recentRejections.set(cow_id, { status, message: error_message } as any);
+            setTimeout(() => recentRejections.delete(cow_id), REJECTION_TTL_MS);
+            
+            cleanupCowCloudResources(cow);
+            logger.info(`[Sync] Duplicate cow deleted for cow_id: ${cow_id}`);
+        } else if (status === 'DISPUTE') {
+            cow.isDispute = true;
+            cow.aiMetadata.isRegistered = true;
+            cow.aiMetadata.status = status;
+
+            let originalFarmerId = null;
+            if (matched_cow_id) {
+                const matchedCow = await Cattle.findById(matched_cow_id);
+                if (matchedCow) {
+                    originalFarmerId = matchedCow.farmerId;
+                }
+            }
+
+            const session = await mongoose.startSession();
+            await session.withTransaction(async () => {
+                await cow.save({ session });
+                if (matched_cow_id) {
+                    await Cattle.findByIdAndUpdate(matched_cow_id, { isDispute: true }, { session });
+                }
+                if (originalFarmerId) {
+                    await Dispute.create([{
+                        cattleId: cow_id,
+                        originalFarmerId: originalFarmerId,
+                        attemptingFarmerId: farmer_id,
+                        status: 'pending',
+                        reason: error_message || 'Duplicate Registration Attempt Detected via AI Biometrics'
+                    }], { session });
+                }
+            });
+            session.endSession();
+
+            logger.info(`[Sync] Dispute marked for cow_id: ${cow_id} and matched_cow_id: ${matched_cow_id}`);
+        } else if (status === 'SUCCESS') {
+            cow.aiMetadata.isRegistered = true;
+            cow.aiMetadata.status = status;
+            await cow.save();
+            logger.info(`[Sync] Successfully registered cow_id: ${cow_id}`);
+        } else {
+            const session = await mongoose.startSession();
+            await session.withTransaction(async () => {
+                await Cattle.findByIdAndDelete(cow_id, { session });
+                await User.findByIdAndUpdate(farmer_id, { $pull: { cows: cow_id } }, { session });
+            });
+            session.endSession();
+            recentRejections.set(cow_id, { status, message: error_message } as any);
+            setTimeout(() => recentRejections.delete(cow_id), REJECTION_TTL_MS);
+            
+            cleanupCowCloudResources(cow);
+            logger.info(`[Sync] Failed AI processing, cow deleted for cow_id: ${cow_id}`);
+        }
+        
+        return true;
+    } catch (error) {
+        logger.error(`[Sync] Error processing DL API result for cow ${cow_id}:`, error);
+        await Cattle.findByIdAndUpdate(cow_id, { $set: { 'aiMetadata.status': 'PENDING' } });
+        return false;
+    }
 }
 
 export const handleDlApiWebhook = asyncHandler(async (req: Request, res: Response) => {
-    const processed = await processDlApiResult(req.body);
-    if (!processed) {
-        return res.status(404).json({ success: false, message: 'Cow not found or missing ID' });
+    const authHeader = req.headers.authorization;
+    const expectedToken = process.env.DL_API_KEY;
+
+    if (!expectedToken) {
+        return res.status(500).json({ success: false, message: 'Server misconfiguration: DL_API_KEY is required for webhook authentication' });
     }
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ success: false, message: 'Unauthorized webhook call' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    
+    // Use timingSafeEqual to prevent timing attacks
+    if (token.length !== expectedToken.length || !crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expectedToken))) {
+        return res.status(401).json({ success: false, message: 'Unauthorized webhook call' });
+    }
+
+    await processDlApiResult(req.body);
+    // Acknowledge receipt even if already processed by polling
     res.status(200).json({ success: true });
 });

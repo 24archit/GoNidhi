@@ -4,9 +4,11 @@ import { User } from '../../models/User';
 import { uploadBufferToCloudinary, deleteFromCloudinary } from '../../services/cloudinaryService';
 import { cleanupCowCloudResources } from '../../services/cattleService';
 import axios from 'axios';
+import mongoose from 'mongoose';
 import { recentRejections, processDlApiResult } from '../farmer/cattle';
 import { processTelemetry } from '../../services/telemetryService';
 import { dlApiClient } from '../../utils/dlApiClient';
+import logger from '../../utils/logger';
 
 export const getCattleDetails = async (req: Request, res: Response) => {
     try {
@@ -48,7 +50,7 @@ export const getCattleDetails = async (req: Request, res: Response) => {
                 const statusRes = await dlApiClient.get(`/status/${cattle._id}`);
                 
                 if (statusRes.data.status === 'COMPLETED') {
-                    console.log(`[DL-API Sync Admin] Polled DL-API and found COMPLETED result for cow ${cattle._id}. Processing locally.`);
+                    logger.info(`[DL-API Sync Admin] Polled DL-API and found COMPLETED result for cow ${cattle._id}. Processing locally.`);
                     await processDlApiResult(statusRes.data.result);
                     
                     const updatedCow = await Cattle.findById(cattle._id).populate('farmerId', 'name contact.phone location.village location.district');
@@ -65,11 +67,17 @@ export const getCattleDetails = async (req: Request, res: Response) => {
                 }
             } catch (err: any) {
                 if (err.response && err.response.status === 404) {
-                    console.log(`[DL-API Sync Admin] Cow ${cattle._id} is PENDING but DL-API has no record of it. Discarding.`);
-                    await cleanupCowCloudResources(cattle);
-                    await Cattle.findByIdAndDelete(cattle._id);
-                    if (cattle.farmerId) {
-                        await User.findByIdAndUpdate(cattle.farmerId._id || cattle.farmerId, { $pull: { cows: cattle._id } });
+                    logger.info(`[DL-API Sync Admin] Cow ${cattle._id} is PENDING but DL-API has no record of it. Discarding.`);
+                    const deletedCow = await Cattle.findOneAndDelete({ _id: cattle._id, 'aiMetadata.status': 'PENDING' });
+                    if (deletedCow) {
+                        await cleanupCowCloudResources(deletedCow);
+                        const session = await mongoose.startSession();
+                        await session.withTransaction(async () => {
+                            if (deletedCow.farmerId) {
+                                await User.findByIdAndUpdate(deletedCow.farmerId._id || deletedCow.farmerId, { $pull: { cows: deletedCow._id } }, { session });
+                            }
+                        });
+                        session.endSession();
                     }
                     
                     return res.status(400).json({ 
@@ -82,9 +90,16 @@ export const getCattleDetails = async (req: Request, res: Response) => {
             }
         }
 
+        // Mask internal PROCESSING_RESULT status from client
+        if (cattle.aiMetadata && cattle.aiMetadata.status === 'PROCESSING_RESULT') {
+            const cattleObj = cattle.toObject ? cattle.toObject() : cattle;
+            cattleObj.aiMetadata.status = 'PENDING';
+            return res.status(200).json({ success: true, data: cattleObj });
+        }
+
         res.status(200).json({ success: true, data: cattle });
     } catch (error: any) {
-        console.error('Error fetching cattle details:', error);
+        logger.error('Error fetching cattle details:', error);
         res.status(500).json({ success: false, message: 'Server Error' });
     }
 };
@@ -96,7 +111,7 @@ export const getAllCattle = async (req: Request, res: Response) => {
         const search = req.query.search as string;
         
         let query: any = {
-            'aiMetadata.status': { $ne: 'PENDING' }
+            'aiMetadata.status': { $nin: ['PENDING', 'PROCESSING_RESULT'] }
         };
         if (search) {
             query.$text = { $search: search };
@@ -121,7 +136,7 @@ export const getAllCattle = async (req: Request, res: Response) => {
             currentPage: page
         });
     } catch (error: any) {
-        console.error('Error fetching all cattle:', error);
+        logger.error('Error fetching all cattle:', error);
         res.status(500).json({ success: false, message: 'Server Error' });
     }
 };
@@ -132,7 +147,7 @@ export const getPendingCattle = async (req: Request, res: Response) => {
         const limit = parseInt(req.query.limit as string) || 20;
         
         let query: any = {
-            'aiMetadata.status': 'PENDING'
+            'aiMetadata.status': { $in: ['PENDING', 'PROCESSING_RESULT'] }
         };
 
         const skip = (page - 1) * limit;
@@ -153,7 +168,7 @@ export const getPendingCattle = async (req: Request, res: Response) => {
             currentPage: page
         });
     } catch (error: any) {
-        console.error('Error fetching pending cattle:', error);
+        logger.error('Error fetching pending cattle:', error);
         res.status(500).json({ success: false, message: 'Server Error' });
     }
 };
@@ -267,9 +282,13 @@ export const proxyRegisterCow = async (req: Request, res: Response) => {
                 }
             });
 
-            savedCow = await newCow.save();
-
-            await User.findByIdAndUpdate(farmer._id, { $push: { cows: savedCow._id } });
+            const session = await mongoose.startSession();
+            await session.withTransaction(async () => {
+                const [savedItems] = await Cattle.create([newCow], { session });
+                savedCow = savedItems;
+                await User.findByIdAndUpdate(farmer._id, { $push: { cows: savedCow._id } }, { session });
+            });
+            session.endSession();
 
             await dlApiClient.post(`/register`, {
                 cow_id: savedCow._id.toString(),
@@ -286,11 +305,15 @@ export const proxyRegisterCow = async (req: Request, res: Response) => {
             });
 
         } catch (error: any) {
-            console.error('Error proxy registering cow (Rollback Triggered):', error.message || error);
+            logger.error('Error proxy registering cow (Rollback Triggered):', error.message || error);
             
             if (savedCow) {
-                await Cattle.findByIdAndDelete(savedCow._id).catch(() => {});
-                await User.findByIdAndUpdate(farmer._id, { $pull: { cows: savedCow._id } }).catch(() => {});
+                const session = await mongoose.startSession();
+                await session.withTransaction(async () => {
+                    await Cattle.findByIdAndDelete(savedCow._id, { session });
+                    await User.findByIdAndUpdate(farmer._id, { $pull: { cows: savedCow._id } }, { session });
+                });
+                session.endSession();
             }
             for (const fileUrl of uploadedFiles) {
                 await deleteFromCloudinary(fileUrl).catch(() => {});
@@ -299,7 +322,7 @@ export const proxyRegisterCow = async (req: Request, res: Response) => {
             res.status(500).json({ success: false, message: error.message || 'Could not complete registration. Rolled back successfully.' });
         }
     } catch (error: any) {
-        console.error('Error in proxy registering cow outer block:', error);
+        logger.error('Error in proxy registering cow outer block:', error);
         res.status(500).json({ success: false, message: error.message || 'Server Error' });
     }
 };
@@ -307,16 +330,19 @@ export const proxyRegisterCow = async (req: Request, res: Response) => {
 export const deleteCattle = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const deletedCattle = await Cattle.findByIdAndDelete(id);
+        const session = await mongoose.startSession();
+        let deletedCattle: any = null;
+        await session.withTransaction(async () => {
+            deletedCattle = await Cattle.findByIdAndDelete(id, { session });
+            if (deletedCattle && deletedCattle.farmerId) {
+                await User.findByIdAndUpdate(deletedCattle.farmerId, { $pull: { cows: deletedCattle._id } }, { session });
+            }
+        });
+        session.endSession();
 
         if (!deletedCattle) {
             // Idempotent delete: if it's already gone, treat as success
             return res.status(200).json({ success: true, message: 'Cattle already deleted' });
-        }
-
-        // Remove from farmer's list
-        if (deletedCattle.farmerId) {
-            await User.findByIdAndUpdate(deletedCattle.farmerId, { $pull: { cows: deletedCattle._id } }).catch(() => {});
         }
 
         // Background cleanup of cloud resources
@@ -324,7 +350,7 @@ export const deleteCattle = async (req: Request, res: Response) => {
 
         res.status(200).json({ success: true, message: 'Cattle deleted successfully' });
     } catch (error: any) {
-        console.error('Error deleting cattle:', error);
+        logger.error('Error deleting cattle:', error);
         res.status(500).json({ success: false, message: 'Server Error' });
     }
 };
@@ -355,7 +381,7 @@ export const updateCattle = async (req: Request, res: Response) => {
 
         res.status(200).json({ success: true, message: 'Cattle updated successfully', data: updatedCattle });
     } catch (error: any) {
-        console.error('Error updating cattle:', error);
+        logger.error('Error updating cattle:', error);
         res.status(500).json({ success: false, message: 'Server Error' });
     }
 };
@@ -440,16 +466,16 @@ export const proxySearchCow = async (req: Request, res: Response) => {
             if (muzzleCloudinary) await deleteFromCloudinary(muzzleCloudinary).catch(() => {});
 
             if (axios.isCancel(dlError) || dlError.name === 'AbortError' || dlError.name === 'CanceledError') {
-                console.log('Client disconnected, canceled DL API search request.');
+                logger.info('Client disconnected, canceled DL API search request.');
                 return res.status(499).json({ success: false, message: 'Client Closed Request' });
             }
-            console.error('Error calling DL API proxy search:', dlError?.response?.data || dlError.message);
+            logger.error('Error calling DL API proxy search:', dlError?.response?.data || dlError.message);
             const errorDetail = dlError?.response?.data?.detail || 'AI Service unavailable or could not process images.';
             return res.status(404).json({ success: false, message: errorDetail });
         }
 
     } catch (error: any) {
-        console.error('Error in proxy search:', error);
+        logger.error('Error in proxy search:', error);
         res.status(500).json({ success: false, message: 'Server Error' });
     }
 };

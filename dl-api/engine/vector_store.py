@@ -40,6 +40,11 @@ class CattleVectorStore:
                 field_name="cow_id",
                 field_schema="keyword",
             )
+            self.client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="farmer_id",
+                field_schema="keyword",
+            )
         except Exception as e:
             print(f"Warning: Error initializing collection or indexes: {e}")
 

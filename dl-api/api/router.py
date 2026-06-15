@@ -18,12 +18,13 @@ async def process_registration_safe(payload: dict):
         print(f"Error processing async registration: {e}")
         if payload and payload.get("cow_id"):
             try:
+                import os
                 requests.post(EXPRESS_WEBHOOK_URL, json={
                     "cow_id": payload.get("cow_id"),
                     "farmer_id": payload.get("farmer_id"),
                     "status": "FAILED",
-                    "error_message": str(e)
-                }, timeout=15)
+                    "error_message": "Registration failed due to an unexpected AI service error."
+                }, headers={"Authorization": f"Bearer {os.getenv('API_SECRET')}"}, timeout=15)
             except Exception as webhook_err:
                 print(f"Failed to send async registration failure webhook: {webhook_err}")
 
@@ -41,7 +42,7 @@ async def search_cow(req: SearchRequest, fastapi_req: Request):
         raise
     except Exception as e:
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Internal AI Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal Server Error: An unexpected error occurred during the search process.")
 
 @router.delete("/cow/{cow_id}", dependencies=[Depends(verify_token)])
 async def delete_cow_embeddings(cow_id: str):
@@ -51,7 +52,7 @@ async def delete_cow_embeddings(cow_id: str):
         return {"status": "success", "message": f"Vectors for cow {cow_id} deleted successfully."}
     except Exception as e:
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Internal AI Error while deleting vectors: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal Server Error: An unexpected error occurred while deleting vectors.")
 
 @router.get("/status/{cow_id}", dependencies=[Depends(verify_token)])
 async def get_status(cow_id: str):
@@ -68,6 +69,6 @@ async def health_check(request: Request):
     """Liveness check for Load Balancers."""
     return {
         "status": "healthy", 
-        "model_loaded": glb.dl is not None,
-        "db_connected": glb.db is not None
+        "model_loaded": bool(glb.dl),
+        "db_connected": bool(glb.db)
     }

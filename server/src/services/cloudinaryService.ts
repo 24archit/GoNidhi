@@ -2,6 +2,7 @@ import { v2 as cloudinary } from 'cloudinary';
 import { v4 as uuidv4 } from 'uuid';
 import dotenv from 'dotenv';
 import stream from 'stream';
+import logger from '../utils/logger';
 
 dotenv.config();
 
@@ -25,7 +26,7 @@ export const uploadBase64ToCloudinary = async (base64String: string, folder: str
 
         return result.secure_url;
     } catch (error) {
-        console.error('Cloudinary base64 upload error:', error);
+        logger.error('Cloudinary base64 upload error:', error);
         return "";
     }
 };
@@ -39,7 +40,7 @@ export const uploadBufferToCloudinary = async (buffer: Buffer, folder: string = 
             },
             (error, result) => {
                 if (error) {
-                    console.error('Cloudinary buffer upload error:', error);
+                    logger.error('Cloudinary buffer upload error:', error);
                     reject(error);
                 } else if (result) {
                     resolve(result.secure_url);
@@ -66,9 +67,9 @@ export const deleteFromCloudinary = async (url: string) => {
         if (match && match[1]) {
             const publicId = match[1];
             await cloudinary.uploader.destroy(publicId);
-            console.log(`Deleted image from Cloudinary: ${publicId}`);
+            logger.info(`Deleted image from Cloudinary: ${publicId}`);
         }
     } catch (error) {
-        console.error('Cloudinary delete error:', error);
+        logger.error('Cloudinary delete error:', error);
     }
 };

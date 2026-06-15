@@ -7,7 +7,9 @@ def send_webhook(payload: dict, timeout: int = 60) -> bool:
     Returns True if successful, logs and returns False otherwise.
     """
     try:
-        resp = requests.post(EXPRESS_WEBHOOK_URL, json=payload, timeout=timeout)
+        import os
+        headers = {"Authorization": f"Bearer {os.getenv('API_SECRET')}"}
+        resp = requests.post(EXPRESS_WEBHOOK_URL, json=payload, headers=headers, timeout=timeout)
         resp.raise_for_status()
         return True
     except Exception as webhook_err:

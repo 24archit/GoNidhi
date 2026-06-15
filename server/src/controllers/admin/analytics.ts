@@ -5,6 +5,7 @@ import { User } from '../../models/User';
 import { Dispute } from '../../models/Dispute';
 import { deleteFromCloudinary } from '../../services/cloudinaryService';
 import mongoose from 'mongoose';
+import logger from '../../utils/logger';
 
 export const getSystemStats = async (req: Request, res: Response) => {
     try {
@@ -23,7 +24,7 @@ export const getSystemStats = async (req: Request, res: Response) => {
             }
         });
     } catch (error: any) {
-        console.error('Error fetching stats:', error);
+        logger.error('Error fetching stats:', error);
         res.status(500).json({ success: false, message: 'Server Error' });
     }
 };
@@ -138,7 +139,7 @@ export const getAiLogs = async (req: Request, res: Response) => {
             currentPage: page
         });
     } catch (error: any) {
-        console.error('Error fetching AI logs:', error);
+        logger.error('Error fetching AI logs:', error);
         res.status(500).json({ success: false, message: 'Server Error' });
     }
 };
@@ -155,7 +156,7 @@ export const getAiLogById = async (req: Request, res: Response) => {
         }
         res.status(200).json({ success: true, data: log });
     } catch (error: any) {
-        console.error('Error fetching AI log by ID:', error);
+        logger.error('Error fetching AI log by ID:', error);
         res.status(500).json({ success: false, message: 'Server Error' });
     }
 };
@@ -177,7 +178,7 @@ export const updateAiLog = async (req: Request, res: Response) => {
 
         res.status(200).json({ success: true, message: 'Log updated successfully', data: updatedLog });
     } catch (error: any) {
-        console.error('Error updating AI log:', error);
+        logger.error('Error updating AI log:', error);
         res.status(500).json({ success: false, message: 'Server Error' });
     }
 };
@@ -192,21 +193,21 @@ export const deleteAiLog = async (req: Request, res: Response) => {
         }
 
         if (deletedLog.muzzleCropUrl) {
-            deleteFromCloudinary(deletedLog.muzzleCropUrl).catch(err => console.error(err));
+            deleteFromCloudinary(deletedLog.muzzleCropUrl).catch(err => logger.error(err));
         }
         if (deletedLog.faceCropUrl) {
-            deleteFromCloudinary(deletedLog.faceCropUrl).catch(err => console.error(err));
+            deleteFromCloudinary(deletedLog.faceCropUrl).catch(err => logger.error(err));
         }
         if (deletedLog.muzzleImgUrl) {
-            deleteFromCloudinary(deletedLog.muzzleImgUrl).catch(err => console.error(err));
+            deleteFromCloudinary(deletedLog.muzzleImgUrl).catch(err => logger.error(err));
         }
         if (deletedLog.faceImgUrl) {
-            deleteFromCloudinary(deletedLog.faceImgUrl).catch(err => console.error(err));
+            deleteFromCloudinary(deletedLog.faceImgUrl).catch(err => logger.error(err));
         }
 
         res.status(200).json({ success: true, message: 'Log deleted successfully' });
     } catch (error: any) {
-        console.error('Error deleting AI log:', error);
+        logger.error('Error deleting AI log:', error);
         res.status(500).json({ success: false, message: 'Server Error' });
     }
 };
@@ -280,7 +281,7 @@ export const exportAiLogs = async (req: Request, res: Response) => {
         return res.status(200).send(csv);
 
     } catch (error: any) {
-        console.error('Error exporting AI logs:', error);
+        logger.error('Error exporting AI logs:', error);
         res.status(500).json({ success: false, message: 'Server Error' });
     }
 };

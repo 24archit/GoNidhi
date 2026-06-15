@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { User } from '../../models/User';
+import logger from '../../utils/logger';
 
 export const getUserProfile = async (req: any, res: Response) => {
     try {
@@ -17,7 +18,7 @@ export const getUserProfile = async (req: any, res: Response) => {
 
         res.status(200).json({ success: true, user });
     } catch (error) {
-        console.error('Fetch Profile Error:', error);
+        logger.error('Fetch Profile Error:', error);
         res.status(500).json({ success: false, message: 'Server Error fetching profile' });
     }
 };
@@ -60,7 +61,7 @@ export const updateUserProfile = async (req: any, res: Response) => {
 
         res.status(200).json({ success: true, user: updatedUser });
     } catch (error) {
-        console.error('Update Profile Error:', error);
+        logger.error('Update Profile Error:', error);
         res.status(500).json({ success: false, message: 'Server Error updating profile' });
     }
 };
@@ -85,7 +86,7 @@ export const logoutUser = async (req: any, res: Response) => {
 
         res.status(200).json({ success: true, message: 'Logged out successfully' });
     } catch (error) {
-        console.error('Logout Error:', error);
+        logger.error('Logout Error:', error);
         res.status(500).json({ success: false, message: 'Server Error during logout' });
     }
 };

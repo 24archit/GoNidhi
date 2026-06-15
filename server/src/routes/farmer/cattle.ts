@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { registerCow, getMyCattle, getCowProfile, searchCow, handleDlApiWebhook, deleteCow } from '../../controllers/farmer/cattle';
+import { registerCow, getMyCattle, getCowProfile, searchCow, handleDlApiWebhook } from '../../controllers/farmer/cattle';
 import { requireAuth } from '../../middleware/auth';
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -29,6 +29,5 @@ router.post('/', upload.fields([
 
 router.get('/', getMyCattle);
 router.get('/:id', getCowProfile);
-router.delete('/:id', deleteCow);
 
 export default router;

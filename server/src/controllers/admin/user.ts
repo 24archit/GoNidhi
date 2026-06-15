@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import { User } from '../../models/User';
 import { Cattle } from '../../models/Cattel';
 import { cleanupCowCloudResources } from '../../services/cattleService';
+import mongoose from 'mongoose';
+import logger from '../../utils/logger';
 
 export const getFarmers = async (req: Request, res: Response) => {
     try {
@@ -37,7 +39,7 @@ export const getFarmers = async (req: Request, res: Response) => {
             currentPage: page
         });
     } catch (error: any) {
-        console.error('Error fetching farmers:', error);
+        logger.error('Error fetching farmers:', error);
         res.status(500).json({ success: false, message: 'Server Error' });
     }
 };
@@ -64,7 +66,7 @@ export const getFarmerDetails = async (req: Request, res: Response) => {
 
         res.status(200).json({ success: true, data });
     } catch (error: any) {
-        console.error('Error fetching farmer details:', error);
+        logger.error('Error fetching farmer details:', error);
         res.status(500).json({ success: false, message: 'Server Error' });
     }
 };
@@ -91,7 +93,7 @@ export const getFarmerCattle = async (req: Request, res: Response) => {
             currentPage: page
         });
     } catch (error: any) {
-        console.error('Error fetching farmer cattle:', error);
+        logger.error('Error fetching farmer cattle:', error);
         res.status(500).json({ success: false, message: 'Server Error' });
     }
 };
@@ -99,17 +101,22 @@ export const getFarmerCattle = async (req: Request, res: Response) => {
 export const deleteFarmer = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const deletedFarmer = await User.findOneAndDelete({ _id: id, role: 'farmer' });
+        const session = await mongoose.startSession();
+        let deletedFarmer: any = null;
+        let farmersCattle: any[] = [];
+        
+        await session.withTransaction(async () => {
+            deletedFarmer = await User.findOneAndDelete({ _id: id, role: 'farmer' }, { session });
+            if (deletedFarmer) {
+                farmersCattle = await Cattle.find({ farmerId: id }).session(session);
+                await Cattle.deleteMany({ farmerId: id }, { session });
+            }
+        });
+        session.endSession();
 
         if (!deletedFarmer) {
             return res.status(404).json({ success: false, message: 'Farmer not found' });
         }
-
-        // Fetch all of the farmer's cows to clean up their cloud resources
-        const farmersCattle = await Cattle.find({ farmerId: id });
-        
-        // Also delete their cattle from MongoDB
-        await Cattle.deleteMany({ farmerId: id });
 
         // Background cleanup of cloud resources for all deleted cows
         try {
@@ -117,12 +124,12 @@ export const deleteFarmer = async (req: Request, res: Response) => {
                 await cleanupCowCloudResources(cow);
             }
         } catch (cleanupErr) {
-            console.error('Error during cloud cleanup in deleteFarmer:', cleanupErr);
+            logger.error('Error during cloud cleanup in deleteFarmer:', cleanupErr);
         }
 
         res.status(200).json({ success: true, message: 'Farmer deleted successfully' });
     } catch (error: any) {
-        console.error('Error deleting farmer:', error);
+        logger.error('Error deleting farmer:', error);
         res.status(500).json({ success: false, message: 'Server Error' });
     }
 };
@@ -163,7 +170,7 @@ export const updateFarmer = async (req: Request, res: Response) => {
 
         res.status(200).json({ success: true, data, message: 'Farmer updated successfully' });
     } catch (error: any) {
-        console.error('Error updating farmer:', error);
+        logger.error('Error updating farmer:', error);
         res.status(500).json({ success: false, message: 'Server Error' });
     }
 };

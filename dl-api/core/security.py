@@ -1,4 +1,5 @@
 import os
+import secrets
 from fastapi import Security, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from slowapi import Limiter
@@ -9,7 +10,12 @@ security = HTTPBearer()
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Security(security)):
     expected_token = os.getenv("API_SECRET")
-    if expected_token and credentials.credentials != expected_token:
+    if not expected_token:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Server misconfiguration: API_SECRET is required"
+        )
+    if not secrets.compare_digest(credentials.credentials, expected_token):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials"

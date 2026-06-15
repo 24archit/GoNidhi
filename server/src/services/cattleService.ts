@@ -2,6 +2,8 @@ import { Cattle } from '../models/Cattel';
 import { User } from '../models/User';
 import { uploadBufferToCloudinary, deleteFromCloudinary } from './cloudinaryService';
 import { dlApiClient } from '../utils/dlApiClient';
+import mongoose from 'mongoose';
+import logger from '../utils/logger';
 
 export const createCattleRegistration = async (farmerId: string, payload: any, files: any) => {
     // 1. ATOMICITY CHECK: Ensure the farmer does not already have a PENDING cow.
@@ -80,7 +82,7 @@ export const createCattleRegistration = async (farmerId: string, payload: any, f
             faceTelemetryCloudinary = await safeUpload(faceProfileFile.buffer, 'ama-gau-dhana-telemetry');
             muzzleTelemetryCloudinary = await safeUpload(muzzleFile.buffer, 'ama-gau-dhana-telemetry');
         } catch (uploadError) {
-            console.error('Error during image uploads, rolling back:', uploadError);
+            logger.error('Error during image uploads, rolling back:', uploadError);
             const err = new Error('Failed to upload images. Please try again.');
             (err as any).statusCode = 500;
             throw err;
@@ -131,12 +133,17 @@ export const createCattleRegistration = async (farmerId: string, payload: any, f
         });
 
         try {
-            savedCow = await newCow.save();
-            await User.findByIdAndUpdate(farmerId, {
-                $push: { cows: savedCow._id }
+            const session = await mongoose.startSession();
+            await session.withTransaction(async () => {
+                const [savedItems] = await Cattle.create([newCow], { session });
+                savedCow = savedItems;
+                await User.findByIdAndUpdate(farmerId, {
+                    $push: { cows: savedCow._id }
+                }, { session });
             });
+            session.endSession();
         } catch (dbError) {
-            console.error('Error saving to MongoDB, rolling back:', dbError);
+            logger.error('Error saving to MongoDB, rolling back:', dbError);
             const err = new Error('Database error during registration. Please try again.');
             (err as any).statusCode = 500;
             throw err;
@@ -154,7 +161,7 @@ export const createCattleRegistration = async (farmerId: string, payload: any, f
                 muzzle_image_url: muzzleTelemetryCloudinary
             });
         } catch (apiError: any) {
-            console.error('Error triggering DL-API:', apiError.message);
+            logger.error('Error triggering DL-API:', apiError.message);
             const err = new Error('Could not trigger AI registration process. Please try again.');
             (err as any).statusCode = 500;
             throw err;
@@ -164,8 +171,12 @@ export const createCattleRegistration = async (farmerId: string, payload: any, f
 
     } catch (error: any) {
         if (savedCow) {
-            await Cattle.findByIdAndDelete(savedCow._id).catch(() => {});
-            await User.findByIdAndUpdate(farmerId, { $pull: { cows: savedCow._id } }).catch(() => {});
+            const session = await mongoose.startSession();
+            await session.withTransaction(async () => {
+                await Cattle.findByIdAndDelete(savedCow._id, { session });
+                await User.findByIdAndUpdate(farmerId, { $pull: { cows: savedCow._id } }, { session });
+            });
+            session.endSession();
         }
         for (const fileUrl of uploadedFiles) {
             await deleteFromCloudinary(fileUrl).catch(() => {});
@@ -190,10 +201,10 @@ export const cleanupCowCloudResources = async (cow: any) => {
         try {
             await dlApiClient.delete(`/cow/${cow._id}`);
         } catch (dlErr) {
-            console.error(`Failed to delete vectors for cow ${cow._id} in DL-API:`, dlErr);
+            logger.error(`Failed to delete vectors for cow ${cow._id} in DL-API:`, dlErr);
         }
 
     } catch (err) {
-        console.error('Error in cleanupCowCloudResources:', err);
+        logger.error('Error in cleanupCowCloudResources:', err);
     }
 };

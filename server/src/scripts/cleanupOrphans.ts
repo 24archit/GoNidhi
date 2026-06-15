@@ -3,6 +3,7 @@ import { v2 as cloudinary } from 'cloudinary';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import path from 'path';
+import logger from '../utils/logger';
 
 // Load env vars
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
@@ -10,7 +11,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../../dl-api/.env') }); // loa
 
 // Setup Cloudinary
 if (!process.env.CLOUDINARY_URL) {
-    console.error('Missing CLOUDINARY_URL. Make sure .env is correct.');
+    logger.error('Missing CLOUDINARY_URL. Make sure .env is correct.');
     process.exit(1);
 }
 cloudinary.config(true); // Automatically parses CLOUDINARY_URL
@@ -26,7 +27,7 @@ const Cattle = mongoose.model('Cattle', CattleSchema, 'cattles');
 const isDryRun = !process.argv.includes('--execute');
 
 async function getAllQdrantCowIds(): Promise<Set<string>> {
-    console.log('[Qdrant] Fetching all vectors from cattle_vectors_spatial...');
+    logger.info('[Qdrant] Fetching all vectors from cattle_vectors_spatial...');
     const qdrantCowIds = new Set<string>();
     const headers = QDRANT_API_KEY ? { 'api-key': QDRANT_API_KEY } : {};
 
@@ -58,19 +59,19 @@ async function getAllQdrantCowIds(): Promise<Set<string>> {
         }
     } catch (err: any) {
         if (err.response?.status === 404) {
-            console.log('[Qdrant] Collection cattle_vectors_spatial not found. Assuming empty.');
+            logger.info('[Qdrant] Collection cattle_vectors_spatial not found. Assuming empty.');
             return qdrantCowIds;
         }
-        console.error('[Qdrant] Error fetching vectors:', err.response?.data || err.message);
+        logger.error('[Qdrant] Error fetching vectors:', err.response?.data || err.message);
         throw err;
     }
 
-    console.log(`[Qdrant] Found ${totalVectors} vectors representing ${qdrantCowIds.size} unique cows.`);
+    logger.info(`[Qdrant] Found ${totalVectors} vectors representing ${qdrantCowIds.size} unique cows.`);
     return qdrantCowIds;
 }
 
 async function getAllCloudinaryImages(): Promise<Set<string>> {
-    console.log('[Cloudinary] Fetching all images...');
+    logger.info('[Cloudinary] Fetching all images...');
     const cloudinaryIds = new Set<string>();
     
     let next_cursor: string | undefined = undefined;
@@ -93,7 +94,7 @@ async function getAllCloudinaryImages(): Promise<Set<string>> {
         next_cursor = res.next_cursor;
     } while (next_cursor);
 
-    console.log(`[Cloudinary] Checked ${totalImages} total images. Retained non-telemetry images for cleanup check.`);
+    logger.info(`[Cloudinary] Checked ${totalImages} total images. Retained non-telemetry images for cleanup check.`);
     return cloudinaryIds;
 }
 
@@ -108,22 +109,22 @@ async function deleteFromQdrant(cowId: string) {
 }
 
 async function runCleanup() {
-    console.log(`\n===========================================`);
-    console.log(` STARTING CLEANUP SCRIPT (Dry Run: ${isDryRun}) `);
-    console.log(`===========================================\n`);
+    logger.info(`\n===========================================`);
+    logger.info(` STARTING CLEANUP SCRIPT (Dry Run: ${isDryRun}) `);
+    logger.info(`===========================================\n`);
 
     if (!process.env.MONGO_URI) {
-        console.error('Missing MONGO_URI. Make sure .env is correct.');
+        logger.error('Missing MONGO_URI. Make sure .env is correct.');
         process.exit(1);
     }
 
     await mongoose.connect(process.env.MONGO_URI);
-    console.log('[MongoDB] Connected successfully.');
+    logger.info('[MongoDB] Connected successfully.');
 
     try {
         // 1. Fetch Mongo State
         const allCows = await Cattle.find({});
-        console.log(`[MongoDB] Found ${allCows.length} total cows in database.`);
+        logger.info(`[MongoDB] Found ${allCows.length} total cows in database.`);
 
         const mongoCowIds = new Set<string>();
         const validMongoCowIds = new Set<string>(); // isRegistered=true or status=SUCCESS
@@ -168,14 +169,14 @@ async function runCleanup() {
         // 3. Fetch Cloudinary State
         const cloudinaryIds = await getAllCloudinaryImages();
 
-        console.log(`\n--- CROSS-REFERENCING ---\n`);
+        logger.info(`\n--- CROSS-REFERENCING ---\n`);
 
         let toDeleteMongoCount = 0;
         let toDeleteQdrantCount = 0;
         let toDeleteCloudinaryCount = 0;
 
         // RULE 1: Corrupted Cow (Mongo but no Qdrant)
-        console.log(`[RULE 1] Checking for Corrupted Cows (Registered in Mongo, missing from Qdrant)...`);
+        logger.info(`[RULE 1] Checking for Corrupted Cows (Registered in Mongo, missing from Qdrant)...`);
         const corruptedCowIds: string[] = [];
         for (const id of validMongoCowIds) {
             if (!qdrantCowIds.has(id)) {
@@ -183,17 +184,17 @@ async function runCleanup() {
             }
         }
         if (corruptedCowIds.length > 0) {
-            console.log(`⚠️  Found ${corruptedCowIds.length} corrupted cows! IDs: ${corruptedCowIds.join(', ')}`);
+            logger.info(`⚠️  Found ${corruptedCowIds.length} corrupted cows! IDs: ${corruptedCowIds.join(', ')}`);
             toDeleteMongoCount += corruptedCowIds.length;
             for (const id of corruptedCowIds) {
                 if (!isDryRun) await Cattle.findByIdAndDelete(id);
             }
         } else {
-            console.log(`✅ No corrupted cows found.`);
+            logger.info(`✅ No corrupted cows found.`);
         }
 
         // RULE 2: Orphaned Vector (Qdrant but no Mongo)
-        console.log(`\n[RULE 2] Checking for Orphaned Vectors (In Qdrant, missing from Mongo)...`);
+        logger.info(`\n[RULE 2] Checking for Orphaned Vectors (In Qdrant, missing from Mongo)...`);
         const orphanedVectorIds: string[] = [];
         for (const qId of qdrantCowIds) {
             // If it's not in Mongo at all, or it IS in Mongo but we just deleted it for being corrupted
@@ -202,19 +203,19 @@ async function runCleanup() {
             }
         }
         if (orphanedVectorIds.length > 0) {
-            console.log(`⚠️  Found ${orphanedVectorIds.length} orphaned Qdrant sets! Cow IDs: ${orphanedVectorIds.join(', ')}`);
+            logger.info(`⚠️  Found ${orphanedVectorIds.length} orphaned Qdrant sets! Cow IDs: ${orphanedVectorIds.join(', ')}`);
             toDeleteQdrantCount += orphanedVectorIds.length;
             for (const qId of orphanedVectorIds) {
                 if (!isDryRun) await deleteFromQdrant(qId);
             }
         } else {
-            console.log(`✅ No orphaned vectors found.`);
+            logger.info(`✅ No orphaned vectors found.`);
         }
 
         // RULE 3: Stale Pending (Failed Registration)
-        console.log(`\n[RULE 3] Checking for Stale PENDING Registrations (> 1hr old)...`);
+        logger.info(`\n[RULE 3] Checking for Stale PENDING Registrations (> 1hr old)...`);
         if (stalePendingCows.length > 0) {
-            console.log(`⚠️  Found ${stalePendingCows.length} stale pending cows! IDs: ${stalePendingCows.map(c => c._id.toString()).join(', ')}`);
+            logger.info(`⚠️  Found ${stalePendingCows.length} stale pending cows! IDs: ${stalePendingCows.map(c => c._id.toString()).join(', ')}`);
             toDeleteMongoCount += stalePendingCows.length;
             for (const cow of stalePendingCows) {
                 const id = cow._id.toString();
@@ -224,7 +225,7 @@ async function runCleanup() {
                 }
             }
         } else {
-            console.log(`✅ No stale pending cows found.`);
+            logger.info(`✅ No stale pending cows found.`);
         }
 
         // Refresh Mongo Cloudinary IDs after removing corrupted/stale cows
@@ -250,7 +251,7 @@ async function runCleanup() {
         }
 
         // RULE 4: Orphaned Image (Cloudinary but no surviving Mongo cow)
-        console.log(`\n[RULE 4] Checking for Orphaned Cloudinary Images...`);
+        logger.info(`\n[RULE 4] Checking for Orphaned Cloudinary Images...`);
         const orphanedImageIds: string[] = [];
         for (const pubId of cloudinaryIds) {
             if (!survivingCloudinaryIds.has(pubId)) {
@@ -258,7 +259,7 @@ async function runCleanup() {
             }
         }
         if (orphanedImageIds.length > 0) {
-            console.log(`⚠️  Found ${orphanedImageIds.length} orphaned Cloudinary images!`);
+            logger.info(`⚠️  Found ${orphanedImageIds.length} orphaned Cloudinary images!`);
             toDeleteCloudinaryCount += orphanedImageIds.length;
             
             // Delete in batches of 100 for Cloudinary Admin API
@@ -266,34 +267,34 @@ async function runCleanup() {
                 for (let i = 0; i < orphanedImageIds.length; i += 100) {
                     const batch = orphanedImageIds.slice(i, i + 100);
                     await cloudinary.api.delete_resources(batch);
-                    console.log(`   Deleted batch of ${batch.length} images...`);
+                    logger.info(`   Deleted batch of ${batch.length} images...`);
                 }
             }
         } else {
-            console.log(`✅ No orphaned Cloudinary images found.`);
+            logger.info(`✅ No orphaned Cloudinary images found.`);
         }
 
-        console.log(`\n===========================================`);
+        logger.info(`\n===========================================`);
         if (isDryRun) {
-            console.log(` 📋 DRY RUN SUMMARY `);
-            console.log(` - Cows to delete from Mongo: ${toDeleteMongoCount}`);
-            console.log(` - Vector Sets to delete from Qdrant: ${toDeleteQdrantCount}`);
-            console.log(` - Images to delete from Cloudinary: ${toDeleteCloudinaryCount}`);
-            console.log(`\n To execute these deletions, run: npx ts-node src/scripts/cleanupOrphans.ts --execute`);
+            logger.info(` 📋 DRY RUN SUMMARY `);
+            logger.info(` - Cows to delete from Mongo: ${toDeleteMongoCount}`);
+            logger.info(` - Vector Sets to delete from Qdrant: ${toDeleteQdrantCount}`);
+            logger.info(` - Images to delete from Cloudinary: ${toDeleteCloudinaryCount}`);
+            logger.info(`\n To execute these deletions, run: npx ts-node src/scripts/cleanupOrphans.ts --execute`);
         } else {
-            console.log(` 🗑️  EXECUTION SUMMARY `);
-            console.log(` - Deleted Cows from Mongo: ${toDeleteMongoCount}`);
-            console.log(` - Deleted Vector Sets from Qdrant: ${toDeleteQdrantCount}`);
-            console.log(` - Deleted Images from Cloudinary: ${toDeleteCloudinaryCount}`);
-            console.log(`\n Cleanup completed successfully.`);
+            logger.info(` 🗑️  EXECUTION SUMMARY `);
+            logger.info(` - Deleted Cows from Mongo: ${toDeleteMongoCount}`);
+            logger.info(` - Deleted Vector Sets from Qdrant: ${toDeleteQdrantCount}`);
+            logger.info(` - Deleted Images from Cloudinary: ${toDeleteCloudinaryCount}`);
+            logger.info(`\n Cleanup completed successfully.`);
         }
-        console.log(`===========================================\n`);
+        logger.info(`===========================================\n`);
 
     } catch (error) {
-        console.error('Fatal error during cleanup:', error);
+        logger.error('Fatal error during cleanup:', error);
     } finally {
         await mongoose.disconnect();
-        console.log('[MongoDB] Disconnected.');
+        logger.info('[MongoDB] Disconnected.');
     }
 }
 

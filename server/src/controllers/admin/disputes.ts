@@ -1,6 +1,9 @@
 import { Request, Response } from 'express';
 import { Dispute } from '../../models/Dispute';
 import { Cattle } from '../../models/Cattel';
+import { User } from '../../models/User';
+import mongoose from 'mongoose';
+import logger from '../../utils/logger';
 
 export const getDisputes = async (req: Request, res: Response) => {
     try {
@@ -33,7 +36,7 @@ export const getDisputes = async (req: Request, res: Response) => {
             currentPage: page
         });
     } catch (error: any) {
-        console.error('Error fetching disputes:', error);
+        logger.error('Error fetching disputes:', error);
         res.status(500).json({ success: false, message: 'Server Error' });
     }
 };
@@ -47,25 +50,44 @@ export const resolveDispute = async (req: Request, res: Response) => {
             return res.status(400).json({ success: false, message: 'Invalid resolution status' });
         }
 
-        const dispute = await Dispute.findById(id);
-        if (!dispute) {
-            return res.status(404).json({ success: false, message: 'Dispute not found' });
+        const session = await mongoose.startSession();
+        let updatedDispute: any = null;
+        await session.withTransaction(async () => {
+            // Atomically check and lock the dispute to prevent concurrent resolution races
+            updatedDispute = await Dispute.findOneAndUpdate(
+                { _id: id, status: 'pending' },
+                { $set: { status: resolutionStatus } },
+                { new: true, session }
+            );
+
+            if (!updatedDispute) {
+                return; // Dispute was already resolved or doesn't exist
+            }
+
+            if (resolutionStatus === 'resolved' && assignedFarmerId && updatedDispute.cattleId) {
+                const cow = await Cattle.findById(updatedDispute.cattleId).session(session);
+                if (cow && cow.farmerId && cow.farmerId.toString() !== assignedFarmerId.toString()) {
+                    await User.findByIdAndUpdate(cow.farmerId, { $pull: { cows: updatedDispute.cattleId } }, { session });
+                    await User.findByIdAndUpdate(assignedFarmerId, { $push: { cows: updatedDispute.cattleId } }, { session });
+                } else if (cow && !cow.farmerId) {
+                    await User.findByIdAndUpdate(assignedFarmerId, { $push: { cows: updatedDispute.cattleId } }, { session });
+                }
+                
+                await Cattle.findByIdAndUpdate(updatedDispute.cattleId, {
+                    farmerId: assignedFarmerId,
+                    isDispute: false
+                }, { session });
+            }
+        });
+        session.endSession();
+
+        if (!updatedDispute) {
+            return res.status(400).json({ success: false, message: 'Dispute is already resolved or does not exist.' });
         }
 
-        dispute.status = resolutionStatus;
-        await dispute.save();
-
-        if (resolutionStatus === 'resolved' && assignedFarmerId && dispute.cattleId) {
-            // Update cattle ownership
-            await Cattle.findByIdAndUpdate(dispute.cattleId, {
-                farmerId: assignedFarmerId,
-                isDispute: false
-            });
-        }
-
-        res.status(200).json({ success: true, data: dispute, message: 'Dispute resolved' });
+        res.status(200).json({ success: true, data: updatedDispute, message: 'Dispute resolved' });
     } catch (error: any) {
-        console.error('Error resolving dispute:', error);
+        logger.error('Error resolving dispute:', error);
         res.status(500).json({ success: false, message: 'Server Error' });
     }
 };

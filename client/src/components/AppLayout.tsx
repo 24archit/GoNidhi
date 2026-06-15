@@ -52,9 +52,16 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
     useEffect(() => {
         // Poll localforage occasionally to keep indicator updated (in a real app, use Context or Redux)
+        let isChecking = false;
         const checkSyncs = async () => {
-            const cows = await syncManager.getPendingCows();
-            setPendingCount(cows.length);
+            if (isChecking) return;
+            isChecking = true;
+            try {
+                const cows = await syncManager.getPendingCows();
+                setPendingCount(cows.length);
+            } finally {
+                isChecking = false;
+            }
         };
         checkSyncs();
         const interval = setInterval(checkSyncs, 10000);
