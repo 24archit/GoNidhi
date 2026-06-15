@@ -2,14 +2,9 @@ import express from 'express';
 import multer from 'multer';
 import { getAllCattle, proxyRegisterCow, deleteCattle, getCattleDetails, updateCattle, proxySearchCow, getPendingCattle } from '../../controllers/admin/cattle';
 import { requireAuth, authorizeRoles } from '../../middleware/auth';
-import { verifyWebhookSignature } from '../../middleware/webhookAuth';
-import { handleDlApiWebhook } from '../../controllers/farmer/cattle';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
-
-// Webhook for DL-API
-router.post('/webhook/dl-api-complete', verifyWebhookSignature, handleDlApiWebhook);
 
 router.use(requireAuth, authorizeRoles('admin'));
 

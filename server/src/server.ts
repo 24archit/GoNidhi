@@ -31,10 +31,10 @@ if (!process.env.JWT_SECRET || !process.env.MONGO_URI) {
 
 // Handle unexpected process errors
 process.on('uncaughtException', (err) => {
-  console.error('UNCAUGHT EXCEPTION! 💥', err);
+    console.error('UNCAUGHT EXCEPTION! 💥', err);
 });
 process.on('unhandledRejection', (err) => {
-  console.error('UNHANDLED REJECTION! 💥', err);
+    console.error('UNHANDLED REJECTION! 💥', err);
 });
 
 const app = express();
@@ -52,10 +52,10 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: function (origin: any, callback: any) {
-    if (origin && allowedOrigins.includes(origin)) {
+    if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      console.warn(`Blocked by CORS: ${origin}`);
+      console.warn(`🛑 Blocked by CORS: ${origin}`);
       callback(new Error('Not allowed by CORS policy'));
     }
   },
@@ -84,14 +84,6 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 450,
-  message: { success: false, message: 'Too many requests, please try again later.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
 // Database and Jobs Initialization
 connectDB();
 initJobs();
@@ -104,16 +96,16 @@ app.get("/", (req, res) => res.send("Hello World! API running"));
 
 // Farmer API Routes
 app.use('/api/farmer/auth', authLimiter, authRoutes);
-app.use('/api/farmer/cattle', generalLimiter, cattleRoutes);
-app.use('/api/farmer/location', generalLimiter, locationRoutes);
-app.use('/api/farmer/user', generalLimiter, userRoutes);
+app.use('/api/farmer/cattle', cattleRoutes);
+app.use('/api/farmer/location', locationRoutes);
+app.use('/api/farmer/user', userRoutes);
 
 // Admin API Routes
 app.use('/api/admin/auth', authLimiter, adminAuthRoutes);
-app.use('/api/admin/cattle', generalLimiter, adminCattleRoutes);
-app.use('/api/admin/disputes', generalLimiter, adminDisputeRoutes);
-app.use('/api/admin/analytics', generalLimiter, adminAnalyticsRoutes);
-app.use('/api/admin/users', generalLimiter, adminUserRoutes);
+app.use('/api/admin/cattle', adminCattleRoutes);
+app.use('/api/admin/disputes', adminDisputeRoutes);
+app.use('/api/admin/analytics', adminAnalyticsRoutes);
+app.use('/api/admin/users', adminUserRoutes);
 
 // Global Error Handler Middleware
 app.use(errorHandler);
