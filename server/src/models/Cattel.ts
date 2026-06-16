@@ -115,8 +115,7 @@ const CattleSchema = new Schema<ICattle>({
     }
 }, { timestamps: true });
 
-// Explicit unique index on tagNumber to prevent race conditions
-CattleSchema.index({ tagNumber: 1 }, { unique: true, sparse: true });
+// Explicit unique index on tagNumber is defined in the schema field
 
 // Compound index for quick farmer searches
 CattleSchema.index({ farmerId: 1, tagNumber: 1 });
