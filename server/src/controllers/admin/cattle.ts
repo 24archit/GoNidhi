@@ -334,7 +334,7 @@ export const proxyRegisterCow = async (req: Request, res: Response) => {
 
 export const deleteCattle = async (req: Request, res: Response) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         if (!mongoose.Types.ObjectId.isValid(id)) {
             return res.status(404).json({ success: false, message: 'Cattle not found' });
         }
@@ -365,7 +365,7 @@ export const deleteCattle = async (req: Request, res: Response) => {
 
 export const updateCattle = async (req: Request, res: Response) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         if (!mongoose.Types.ObjectId.isValid(id)) {
             return res.status(404).json({ success: false, message: 'Cattle not found' });
         }
