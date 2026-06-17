@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.amagaudhana.admin',
-  appName: 'Ama GauDhana Admin',
+  appId: 'com.gonidhi.admin',
+  appName: 'GoNidhi Admin',
   webDir: 'dist',
   // server: {
   //   url: 'http://localhost:5174',

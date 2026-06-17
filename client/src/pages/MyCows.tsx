@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import PullToRefresh from 'react-simple-pull-to-refresh';
 import { getMyCattleAPI } from '../apis/apis';
-import { getImageUrl } from '@ama-gau-dhana/shared';
+import { getImageUrl } from '@gonidhi/shared';
 
 interface CowListSummary {
     _id: string;
@@ -36,13 +36,13 @@ const MyCows: React.FC = () => {
         return () => clearTimeout(handler);
     }, [searchTerm]);
 
-    const { 
-        data: cowsResponse, 
-        isLoading, 
+    const {
+        data: cowsResponse,
+        isLoading,
         isFetchingNextPage,
         hasNextPage,
         fetchNextPage,
-        refetch 
+        refetch
     } = useInfiniteQuery({
         queryKey: ['cows', debouncedSearch],
         queryFn: ({ pageParam = 1 }) => getMyCattleAPI({ pageParam, search: debouncedSearch }),
@@ -56,7 +56,7 @@ const MyCows: React.FC = () => {
 
     // Flatten pages into a single array
     const cows: CowListSummary[] = cowsResponse?.pages.flatMap(page => page.data) || [];
-    
+
     // Only show successful registrations that are not disputed
     const nonDisputedCows = cows.filter((cow) => !cow.isDispute);
 
@@ -143,7 +143,7 @@ const MyCows: React.FC = () => {
                             </Typography>
                         </Box>
                     )}
-                    
+
                     {nonDisputedCows.map((cow, index) => {
                         const isLastItem = nonDisputedCows.length === index + 1;
                         return (

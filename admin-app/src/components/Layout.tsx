@@ -1,9 +1,9 @@
 import { Box, Drawer, List, ListItem, ListItemIcon, ListItemText, AppBar, Toolbar, Typography, IconButton, Button, Avatar } from '@mui/material';
-import { 
-  Dashboard as DashboardIcon, 
-  People as PeopleIcon, 
-  Pets as PetsIcon, 
-  Gavel as GavelIcon, 
+import {
+  Dashboard as DashboardIcon,
+  People as PeopleIcon,
+  Pets as PetsIcon,
+  Gavel as GavelIcon,
   Analytics as AnalyticsIcon,
   Logout as LogoutIcon,
   Menu as MenuIcon,
@@ -48,8 +48,8 @@ export default function Layout({ children }: { children?: ReactNode }) {
         {menuItems.map((item) => {
           const isSelected = location.pathname === item.path;
           return (
-            <ListItem 
-              key={item.text} 
+            <ListItem
+              key={item.text}
               onClick={() => {
                 navigate(item.path);
                 setMobileOpen(false);
@@ -87,33 +87,32 @@ export default function Layout({ children }: { children?: ReactNode }) {
           >
             <MenuIcon />
           </IconButton>
-          
+
           <Box sx={{
-              bgcolor: 'white',
-              borderRadius: '50%',
-              p: 0.25,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: { xs: 36, sm: 44 },
-              height: { xs: 36, sm: 44 },
-              mr: 1.5,
-              flexShrink: 0
+            bgcolor: 'white',
+            borderRadius: '50%',
+            p: 0.25,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: { xs: 36, sm: 44 },
+            height: { xs: 36, sm: 44 },
+            mr: 1.5,
+            flexShrink: 0
           }}>
-              <Box
-                  component="img"
-                  src="/logo.png"
-                  alt="Ama Gaudhana Logo"
-                  sx={{ width: '100%', height: '100%', objectFit: 'contain' }}
-              />
+            <Box
+              component="img"
+              src="/logo.png"
+              alt="GoNidhi Logo"
+              sx={{ width: '100%', height: '100%', objectFit: 'contain' }}
+            />
           </Box>
           <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-start' }}>
             <Typography variant="h6" noWrap component="div" sx={{ display: 'flex', alignItems: 'center', letterSpacing: '0.5px', lineHeight: 1.1 }}>
-              <span style={{ fontWeight: 400 }}>Ama</span>
-              <span style={{ fontWeight: 800, marginLeft: '4px' }}>Gaudhana</span>
+              <span style={{ fontWeight: 800, marginLeft: '4px' }}>GoNidhi</span>
             </Typography>
-            
-            <Box sx={{ 
+
+            <Box sx={{
               display: 'inline-flex',
               alignItems: 'center',
               bgcolor: 'rgba(255, 255, 255, 0.15)',
@@ -123,10 +122,10 @@ export default function Layout({ children }: { children?: ReactNode }) {
               py: 0.1,
               mt: 0.5
             }}>
-              <Typography variant="caption" sx={{ 
-                fontWeight: 700, 
-                color: 'white', 
-                letterSpacing: '0.5px', 
+              <Typography variant="caption" sx={{
+                fontWeight: 700,
+                color: 'white',
+                letterSpacing: '0.5px',
                 textTransform: 'uppercase',
                 fontSize: '0.55rem'
               }}>
@@ -137,9 +136,9 @@ export default function Layout({ children }: { children?: ReactNode }) {
 
           <IconButton color="inherit" onClick={() => { navigate('/profile'); setMobileOpen(false); }} sx={{ mr: 2 }}>
             <Avatar
-                sx={{ width: 32, height: 32, border: '2px solid rgba(255,255,255,0.8)', bgcolor: 'white', color: 'primary.main', fontSize: '1rem', fontWeight: 'bold' }}
+              sx={{ width: 32, height: 32, border: '2px solid rgba(255,255,255,0.8)', bgcolor: 'white', color: 'primary.main', fontSize: '1rem', fontWeight: 'bold' }}
             >
-                {user?.name?.charAt(0) || 'A'}
+              {user?.name?.charAt(0) || 'A'}
             </Avatar>
           </IconButton>
 
@@ -148,7 +147,7 @@ export default function Layout({ children }: { children?: ReactNode }) {
           </Button>
         </Toolbar>
       </AppBar>
-      
+
       <Box component="nav" sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}>
         <Drawer
           variant="temporary"

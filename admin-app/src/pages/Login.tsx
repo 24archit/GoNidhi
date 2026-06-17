@@ -16,7 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import BrandingFooter from '../components/BrandingFooter';
 
-import { API_BASE } from '@ama-gau-dhana/shared';
+import { API_BASE } from '@gonidhi/shared';
 
 const Login: React.FC = () => {
     const navigate = useNavigate();
@@ -60,7 +60,7 @@ const Login: React.FC = () => {
         <Container maxWidth="sm" sx={{ position: 'relative', minHeight: '100vh', display: 'flex', flexDirection: 'column', p: 3, pt: 'calc(env(safe-area-inset-top) + 24px)' }}>
             <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                 <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 3 }}>
-                    <img src="/logo.png" alt="Ama Gaudhana Logo" style={{ width: '80px', height: '80px', objectFit: 'contain' }} />
+                    <img src="/logo.png" alt="GoNidhi" style={{ width: '80px', height: '80px', objectFit: 'contain' }} />
                     <Typography variant="caption" sx={{ fontWeight: 600, color: 'primary.main', letterSpacing: 1, mt: 1, textTransform: 'uppercase' }}>
                         Govt. of Odisha
                     </Typography>

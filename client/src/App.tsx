@@ -1,6 +1,6 @@
 // Update client/src/App.tsx
 import React, { useEffect, useState } from 'react';
-import { preloadMuzzleModel } from '@ama-gau-dhana/shared';
+import { preloadMuzzleModel } from '@gonidhi/shared';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useOutlet } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import { CssBaseline, CircularProgress, Box, Typography, Stack } from '@mui/material';
@@ -10,10 +10,10 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './queryClient';
 import PageTransition from './components/PageTransition';
-import { syncManager } from '@ama-gau-dhana/shared';
+import { syncManager } from '@gonidhi/shared';
 import { getServerHealthAPI } from './apis/apis';
-import { ProcessingProvider } from '@ama-gau-dhana/shared';
-import { GlobalProcessingOverlay } from '@ama-gau-dhana/shared';
+import { ProcessingProvider } from '@gonidhi/shared';
+import { GlobalProcessingOverlay } from '@gonidhi/shared';
 import { Geolocation } from '@capacitor/geolocation';
 import ocacLogo from '../src/assets/ocac.png';
 import iiitLogo from '../src/assets/iiit.png';
@@ -22,7 +22,7 @@ import * as tf from '@tensorflow/tfjs';
 // Import Pages
 import AppLayout from './components/AppLayout';
 import Home from './pages/Home';
-import { AddCow, SearchCow } from '@ama-gau-dhana/shared';
+import { AddCow, SearchCow } from '@gonidhi/shared';
 import CowProfile from './pages/CowProfile';
 import MyCows from './pages/MyCows';
 import UserProfile from './pages/UserProfile';
@@ -74,7 +74,7 @@ const LocationGuard = ({ children }: { children: React.ReactNode }) => {
         <ErrorOutline color="error" sx={{ fontSize: 64, mb: 2 }} />
         <Typography variant="h5" fontWeight="bold" gutterBottom>Location Required</Typography>
         <Typography variant="body1" color="text.secondary" mb={4}>
-          Ama Gaudhana requires your GPS location to be turned on to verify livestock registration areas. Please enable your Location Services and location permissions to continue using the app.
+          GoNidhi requires your GPS location to be turned on to verify livestock registration areas. Please enable your Location Services and location permissions to continue using the app.
         </Typography>
         <Button variant="contained" onClick={() => window.location.reload()}>Retry</Button>
       </Box>
@@ -217,7 +217,7 @@ const App: React.FC = () => {
                 py: 4,
               }}
             >
-              {/* Ama Gaudhana Logo */}
+              {/* GoNidhi Logo */}
               <motion.div
                 animate={{ y: [0, -5, 0] }}
                 transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
@@ -231,15 +231,14 @@ const App: React.FC = () => {
                     mb: 2,
                   }}
                 >
-                  <Box component="img" src="/logo.png" alt="Ama Gaudhana"
+                  <Box component="img" src="/logo.png" alt="GoNidhi"
                     sx={{ width: 56, height: 56, objectFit: 'contain', borderRadius: '10px' }} />
                 </Box>
               </motion.div>
 
               {/* Brand name */}
               <Typography variant="h4" sx={{ color: 'text.primary', lineHeight: 1 }}>
-                Ama{' '}
-                <Box component="span" sx={{ color: 'primary.main' }}>Gaudhana</Box>
+                <Box component="span" sx={{ color: 'primary.main' }}>GoNidhi</Box>
               </Typography>
 
               {/* Govt badge */}

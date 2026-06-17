@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_for_dev_gau_netra4321';
+const JWT_SECRET = process.env.JWT_SECRET;
 
 export const requireAuth = (req: any, res: Response, next: NextFunction) => {
     const authHeader = req.headers.authorization;

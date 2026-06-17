@@ -5,7 +5,7 @@ import { Preferences } from '@capacitor/preferences';
 /**
  * Register a new farmer and save the JWT token
 //  */
-import { API_BASE } from '@ama-gau-dhana/shared';
+import { API_BASE } from '@gonidhi/shared';
 export const registerFarmerAPI = async (formData: { name: string; phone: string; village: string; state: string; district: string; pincode?: string }) => {
     try {
         const response = await axios.post(`${API_BASE}/api/farmer/auth/register`, formData);
@@ -146,7 +146,7 @@ export const getCowProfileAPI = async (cowId: string) => {
         const response = await axios.get(`${API_BASE}/api/farmer/cattle/${cowId}`, {
             headers: { Authorization: `Bearer ${token}` }
         });
-        
+
         if (!response.data.success) {
             throw new Error(response.data.message || 'Failed to fetch cow profile');
         }

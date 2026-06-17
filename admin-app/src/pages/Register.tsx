@@ -17,12 +17,12 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import BrandingFooter from '../components/BrandingFooter';
 
-import { API_BASE } from '@ama-gau-dhana/shared';
+import { API_BASE } from '@gonidhi/shared';
 
 const Register: React.FC = () => {
     const navigate = useNavigate();
     const { login } = useAuth();
-    
+
     const [formData, setFormData] = useState({
         name: '',
         phone: '',
@@ -37,7 +37,7 @@ const Register: React.FC = () => {
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    
+
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -71,7 +71,7 @@ const Register: React.FC = () => {
     const handleRegister = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
-        
+
         if (formData.password !== formData.confirmPassword) {
             setError("Passwords do not match");
             return;
@@ -103,7 +103,7 @@ const Register: React.FC = () => {
         <Container maxWidth="sm" sx={{ position: 'relative', minHeight: '100vh', display: 'flex', flexDirection: 'column', p: 3, pt: 'calc(env(safe-area-inset-top) + 24px)' }}>
             <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                 <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 3 }}>
-                    <img src="/logo.png" alt="Ama Gaudhana Logo" style={{ width: '80px', height: '80px', objectFit: 'contain' }} />
+                    <img src="/logo.png" alt="GoNidhi Logo" style={{ width: '80px', height: '80px', objectFit: 'contain' }} />
                     <Typography variant="caption" sx={{ fontWeight: 600, color: 'primary.main', letterSpacing: 1, mt: 1, textTransform: 'uppercase' }}>
                         Govt. of Odisha
                     </Typography>
@@ -137,7 +137,7 @@ const Register: React.FC = () => {
                         onChange={handleChange}
                         required
                     />
-                    
+
                     <TextField
                         select
                         label="State"
@@ -194,7 +194,7 @@ const Register: React.FC = () => {
                             }
                         }}
                     />
-                    
+
                     <TextField
                         label="Confirm Password"
                         name="confirmPassword"

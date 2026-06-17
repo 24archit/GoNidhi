@@ -7,7 +7,7 @@ const snakeToCamel = (str: string) => str.replace(/_([a-z])/g, (g) => g[1].toUpp
 export const processTelemetry = async (telemetry: any, endpoint: string, success: boolean) => {
     try {
         if (!telemetry) return;
-        
+
         const formattedTelemetry: any = {};
         for (const key of Object.keys(telemetry)) {
             formattedTelemetry[snakeToCamel(key)] = telemetry[key];
@@ -18,11 +18,11 @@ export const processTelemetry = async (telemetry: any, endpoint: string, success
 
         try {
             if (formattedTelemetry.muzzleCropUrl && formattedTelemetry.muzzleCropUrl.startsWith('data:image')) {
-                uploadedMuzzleCrop = await uploadBase64ToCloudinary(formattedTelemetry.muzzleCropUrl, 'ama-gau-dhana-telemetry');
+                uploadedMuzzleCrop = await uploadBase64ToCloudinary(formattedTelemetry.muzzleCropUrl, 'gonidhi-telemetry');
                 formattedTelemetry.muzzleCropUrl = uploadedMuzzleCrop;
             }
             if (formattedTelemetry.faceCropUrl && formattedTelemetry.faceCropUrl.startsWith('data:image')) {
-                uploadedFaceCrop = await uploadBase64ToCloudinary(formattedTelemetry.faceCropUrl, 'ama-gau-dhana-telemetry');
+                uploadedFaceCrop = await uploadBase64ToCloudinary(formattedTelemetry.faceCropUrl, 'gonidhi-telemetry');
                 formattedTelemetry.faceCropUrl = uploadedFaceCrop;
             }
 
@@ -34,8 +34,8 @@ export const processTelemetry = async (telemetry: any, endpoint: string, success
             });
         } catch (dbError) {
             logger.error(dbError, 'Failed to save AiLog to database. Rolling back telemetry images.');
-            if (uploadedMuzzleCrop) deleteFromCloudinary(uploadedMuzzleCrop).catch(() => {});
-            if (uploadedFaceCrop) deleteFromCloudinary(uploadedFaceCrop).catch(() => {});
+            if (uploadedMuzzleCrop) deleteFromCloudinary(uploadedMuzzleCrop).catch(() => { });
+            if (uploadedFaceCrop) deleteFromCloudinary(uploadedFaceCrop).catch(() => { });
         }
     } catch (err) {
         logger.error(err, `Failed to process telemetry from ${endpoint}:`);

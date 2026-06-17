@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Ama GauDhana Admin</string>
-    <string name="title_activity_main">Ama GauDhana Admin</string>
-    <string name="package_name">com.amagaudhana.admin</string>
-    <string name="custom_url_scheme">com.amagaudhana.admin</string>
+    <string name="app_name">GoNidhi Admin</string>
+    <string name="title_activity_main">GoNidhi Admin</string>
+    <string name="package_name">com.gonidhi.admin</string>
+    <string name="custom_url_scheme">com.gonidhi.admin</string>
 </resources>

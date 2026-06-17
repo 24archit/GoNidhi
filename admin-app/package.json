@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@ama-gau-dhana/shared": "*",
+    "@gonidhi/shared": "*",
     "@capacitor-community/camera-preview": "^8.0.1",
     "@capacitor/android": "^8.4.0",
     "@capacitor/app": "^8.1.0",

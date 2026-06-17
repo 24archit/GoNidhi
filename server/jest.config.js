@@ -12,7 +12,7 @@ module.exports = {
   reporters: [
     'default',
     ['jest-html-reporter', {
-      pageTitle: 'Ama-GauDhana — API Test Report',
+      pageTitle: 'GoNidhi — API Test Report',
       outputPath: 'tests/reports/index.html',
       includeFailureMsg: true,
       includeConsoleLog: false,

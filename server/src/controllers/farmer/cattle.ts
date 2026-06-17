@@ -62,8 +62,8 @@ export const getMyCattle = asyncHandler(async (req: Request, res: Response) => {
         searchQuery.$text = { $search: search };
     }
 
-    const sortOptions: any = search 
-        ? { score: { $meta: "textScore" } } 
+    const sortOptions: any = search
+        ? { score: { $meta: "textScore" } }
         : { createdAt: -1 };
 
     const cattle = await Cattle.find(searchQuery, search ? { score: { $meta: "textScore" } } : {})
@@ -131,9 +131,9 @@ export const getCowProfile = asyncHandler(async (req: Request, res: Response) =>
             const failureStatus = typeof rejectionData === 'string' ? rejectionData : rejectionData?.status;
             const messageStr = typeof rejectionData === 'object' ? rejectionData?.message : undefined;
             const userMessage = getRejectionMessage(failureStatus, messageStr);
-            
-            return res.status(400).json({ 
-                success: false, 
+
+            return res.status(400).json({
+                success: false,
                 isRejected: true,
                 status: failureStatus,
                 message: userMessage
@@ -144,11 +144,11 @@ export const getCowProfile = asyncHandler(async (req: Request, res: Response) =>
     if (cow.aiMetadata.status === 'PENDING') {
         try {
             const statusRes = await dlApiClient.get(`/status/${cow._id}`);
-            
+
             if (statusRes.data.status === 'COMPLETED') {
                 logger.info(`[DL-API Sync] Polled DL-API and found COMPLETED result for cow ${cow._id}. Processing locally.`);
                 await processDlApiResult(statusRes.data.result);
-                
+
                 // Fetch the updated cow or return 404 if it was a failure/duplicate and got deleted
                 const updatedCow = await Cattle.findById(cow._id);
                 if (!updatedCow) {
@@ -156,9 +156,9 @@ export const getCowProfile = asyncHandler(async (req: Request, res: Response) =>
                     const failureStatus = rejectionData ? (rejectionData as any).status : 'FAILED';
                     const messageStr = rejectionData ? (rejectionData as any).message : undefined;
                     const userMessage = getRejectionMessage(failureStatus, messageStr);
-                    
-                    return res.status(400).json({ 
-                        success: false, 
+
+                    return res.status(400).json({
+                        success: false,
                         isRejected: true,
                         status: failureStatus,
                         message: userMessage
@@ -171,22 +171,22 @@ export const getCowProfile = asyncHandler(async (req: Request, res: Response) =>
             // If the DL-API returns a 404, the job is no longer active (crashed or lost).
             if (err.response && err.response.status === 404) {
                 logger.info(`[DL-API Sync] Cow ${cow._id} is PENDING but DL-API has no record of it. Discarding.`);
-                
+
                 // Background cleanup only if we successfully delete
                 const deletedCow = await Cattle.findOneAndDelete({ _id: cow._id, 'aiMetadata.status': 'PENDING' });
-                
+
                 if (deletedCow) {
                     cleanupCowCloudResources(deletedCow);
-                    
+
                     const session = await mongoose.startSession();
                     await session.withTransaction(async () => {
                         await User.findByIdAndUpdate(authReq.user.id, { $pull: { cows: cow._id } }, { session });
                     });
                     session.endSession();
                 }
-                
-                return res.status(400).json({ 
-                    success: false, 
+
+                return res.status(400).json({
+                    success: false,
                     isRejected: true,
                     status: 'AI_CRASH',
                     message: 'The AI server dropped the registration request due to an internal error. Please try again.'
@@ -211,7 +211,7 @@ export const getCowProfile = asyncHandler(async (req: Request, res: Response) =>
 export const searchCow = asyncHandler(async (req: Request, res: Response) => {
     const authReq = req as AuthRequest;
     const abortController = new AbortController();
-    
+
     res.on('close', () => {
         if (!res.writableEnded) abortController.abort();
     });
@@ -229,8 +229,8 @@ export const searchCow = asyncHandler(async (req: Request, res: Response) => {
         const faceFile = files.faceImage[0];
         const muzzleFile = files.muzzleImage[0];
 
-        faceCloudinary = await uploadBufferToCloudinary(faceFile.buffer, 'ama-gau-dhana-telemetry');
-        muzzleCloudinary = await uploadBufferToCloudinary(muzzleFile.buffer, 'ama-gau-dhana-telemetry');
+        faceCloudinary = await uploadBufferToCloudinary(faceFile.buffer, 'gonidhi-telemetry');
+        muzzleCloudinary = await uploadBufferToCloudinary(muzzleFile.buffer, 'gonidhi-telemetry');
 
         const dlResponse = await dlApiClient.post(`/search`, {
             user_id: authReq.user.id,
@@ -249,10 +249,10 @@ export const searchCow = asyncHandler(async (req: Request, res: Response) => {
         }
 
         if (match === false || !cow_id) {
-            return res.status(200).json({ 
-                success: true, 
+            return res.status(200).json({
+                success: true,
                 data: { cowId: null, cow: null, confidence: 0, match: false },
-                message: reason || 'Cow not found. No suspects passed the AI evaluation.' 
+                message: reason || 'Cow not found. No suspects passed the AI evaluation.'
             });
         }
 
@@ -272,8 +272,8 @@ export const searchCow = asyncHandler(async (req: Request, res: Response) => {
         });
 
     } catch (dlError: any) {
-        if (faceCloudinary) deleteFromCloudinary(faceCloudinary).catch(() => {});
-        if (muzzleCloudinary) deleteFromCloudinary(muzzleCloudinary).catch(() => {});
+        if (faceCloudinary) deleteFromCloudinary(faceCloudinary).catch(() => { });
+        if (muzzleCloudinary) deleteFromCloudinary(muzzleCloudinary).catch(() => { });
 
         if (axios.isCancel(dlError) || dlError.name === 'AbortError' || dlError.name === 'CanceledError') {
             logger.info('Client disconnected, canceled DL API search request.');
@@ -305,7 +305,7 @@ export async function processDlApiResult(payload: any) {
         { $set: { 'aiMetadata.status': 'PROCESSING_RESULT' } },
         { new: true }
     );
-    
+
     if (!cow) {
         logger.info(`[Sync] Cow ${cow_id} already processed or not pending.`);
         return false;
@@ -321,7 +321,7 @@ export async function processDlApiResult(payload: any) {
             session.endSession();
             recentRejections.set(cow_id, { status, message: error_message } as any);
             setTimeout(() => recentRejections.delete(cow_id), REJECTION_TTL_MS);
-            
+
             cleanupCowCloudResources(cow);
             logger.info(`[Sync] Duplicate cow deleted for cow_id: ${cow_id}`);
         } else if (status === 'DISPUTE') {
@@ -370,11 +370,11 @@ export async function processDlApiResult(payload: any) {
             session.endSession();
             recentRejections.set(cow_id, { status, message: error_message } as any);
             setTimeout(() => recentRejections.delete(cow_id), REJECTION_TTL_MS);
-            
+
             cleanupCowCloudResources(cow);
             logger.info(`[Sync] Failed AI processing, cow deleted for cow_id: ${cow_id}`);
         }
-        
+
         return true;
     } catch (error) {
         logger.error(error, `[Sync] Error processing DL API result for cow ${cow_id}:`);
@@ -396,7 +396,7 @@ export const handleDlApiWebhook = asyncHandler(async (req: Request, res: Respons
     }
 
     const token = authHeader.split(' ')[1];
-    
+
     // Use timingSafeEqual to prevent timing attacks
     if (token.length !== expectedToken.length || !crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expectedToken))) {
         return res.status(401).json({ success: false, message: 'Unauthorized webhook call' });

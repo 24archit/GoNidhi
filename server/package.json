@@ -9,7 +9,7 @@
     "dev": "nodemon src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "docker:build": "docker build -t <regional-code>.ocir.io/<tenancy-namespace>/ama-gau-dhana-server:latest ."
+    "docker:build": "docker build -t <regional-code>.ocir.io/<tenancy-namespace>/gonidhi-server:latest ."
   },
   "keywords": [],
   "author": "",

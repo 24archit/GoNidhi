@@ -59,5 +59,5 @@ jobs:
       - name: Upload iOS App Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Ama-Gau-Dhana-iOS-Simulator-Build
+          name: Gonidhi-iOS-Simulator-Build
           path: ./client/ios/App/build_output/Build/Products/Release-iphonesimulator/App.app

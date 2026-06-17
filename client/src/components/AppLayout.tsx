@@ -13,7 +13,7 @@ import {
 } from '@mui/icons-material';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
-import { syncManager } from '@ama-gau-dhana/shared';
+import { syncManager } from '@gonidhi/shared';
 import { Badge } from '@mui/material';
 import BrandingFooter from './BrandingFooter';
 import { useQuery } from '@tanstack/react-query';
@@ -145,21 +145,21 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                             <Box
                                 component="img"
                                 src="/logo.png"
-                                alt="Ama Gaudhana Logo"
+                                alt="GoNidhi Logo"
                                 sx={{ width: '100%', height: '100%', objectFit: 'contain' }}
                             />
                         </Box>
-                        <Typography 
-                            variant="h6" 
-                            sx={{ 
-                                lineHeight: 1.1, 
+                        <Typography
+                            variant="h6"
+                            sx={{
+                                lineHeight: 1.1,
                                 fontSize: { xs: '1.1rem', sm: '1.25rem' },
                                 fontWeight: 'bold',
                                 minWidth: 0,
                                 wordWrap: 'break-word'
                             }}
                         >
-                            Ama Gaudhana
+                            GoNidhi
                         </Typography>
                     </Stack>
 
@@ -190,7 +190,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                             <Box component="img" src="/logo.png" alt="Logo" sx={{ width: 40, height: 40, objectFit: 'contain' }} />
                         </Box>
                         <Box>
-                            <Typography variant="h6" fontWeight="bold" sx={{ lineHeight: 1.1 }}>Ama Gaudhana</Typography>
+                            <Typography variant="h6" fontWeight="bold" sx={{ lineHeight: 1.1 }}>GoNidhi</Typography>
                         </Box>
                     </Box>
                     <List sx={{ pt: 1 }}>

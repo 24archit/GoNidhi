@@ -3,10 +3,10 @@ import localforage from 'localforage';
 import { base64ToFile } from './imageUtils';
 import axios from 'axios';
 import { Preferences } from '@capacitor/preferences';
-import { API_BASE } from '@ama-gau-dhana/shared';
+import { API_BASE } from '@gonidhi/shared';
 // Initialize stores
 export const pendingCowsStore = localforage.createInstance({
-    name: 'AmaGauDhana',
+    name: 'GoNidhi',
     storeName: 'pendingCows'
 });
 
@@ -56,7 +56,7 @@ export const syncManager = {
 
             console.log(`Starting sync for ${pendingCows.length} cows...`);
             let syncedCount = 0;
-            
+
             const tokenKey = isAdmin ? 'adminToken' : 'jwt_token';
             const { value: token } = await Preferences.get({ key: tokenKey });
             if (!token) throw new Error('Not authenticated');
@@ -76,7 +76,7 @@ export const syncManager = {
                         tailImage: base64ToFile(cow.tailImage, 'tail_image.jpg'),
                         selfieImage: base64ToFile(cow.selfieImage, 'selfie_image.jpg'),
                     };
-                    
+
                     const fd = new FormData();
                     Object.keys(apiPayload).forEach((key) => {
                         fd.append(key, apiPayload[key]);
@@ -86,7 +86,7 @@ export const syncManager = {
                     const apiResponse = await axios.post(registerEndpoint, fd, {
                         headers: { Authorization: `Bearer ${token}` }
                     });
-                    
+
                     if (!apiResponse.data.success) {
                         throw new Error(apiResponse.data.message || 'Failed to register cow');
                     }
@@ -105,7 +105,7 @@ export const syncManager = {
                             const profileResponse = await axios.get(getCowEndpoint, {
                                 headers: { Authorization: `Bearer ${token}` }
                             });
-                            
+
                             const aiStatus = profileResponse.data?.data?.aiMetadata?.status || profileResponse.data?.aiMetadata?.status;
 
                             if (aiStatus === 'SUCCESS' || aiStatus === 'DISPUTE') {

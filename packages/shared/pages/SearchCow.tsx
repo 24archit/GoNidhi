@@ -21,7 +21,7 @@ import { ALLOW_GALLERY_UPLOAD } from '../config';
 import { useProcessing } from '../contexts/ProcessingContext';
 import { Preferences } from '@capacitor/preferences';
 
-import { API_BASE } from '@ama-gau-dhana/shared';
+import { API_BASE } from '@gonidhi/shared';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 interface CowListSummary {
@@ -34,7 +34,7 @@ interface CowListSummary {
     photos?: { faceProfile?: string; muzzle?: string };
 }
 
-const SEARCH_HISTORY_KEY = 'gau_netra_search_history';
+const SEARCH_HISTORY_KEY = 'gonidhi_search_history';
 const MAX_HISTORY = 3;
 
 function useSearchHistory() {
@@ -293,17 +293,17 @@ const ScanTab = ({ isAdmin }: { isAdmin?: boolean }) => {
         if (!muzzleImage || !faceImage) return;
         const signal = startProcessing('Finding Cattle', 'Uploading biometrics…');
         updateProgress(15);
-        
+
         try {
             const payload = {
                 faceImage: base64ToFile(faceImage, 'search_face.jpg'),
                 muzzleImage: base64ToFile(muzzleImage, 'search_muzzle.jpg')
             };
-            
+
             await new Promise(r => window.setTimeout(r, 600)); // UX delay for realism
             updateProgress(45, 'Matching against database…');
-            
-            const tokenResponse = isAdmin 
+
+            const tokenResponse = isAdmin
                 ? await Preferences.get({ key: 'adminToken' })
                 : await Preferences.get({ key: 'jwt_token' });
             const token = tokenResponse.value;
@@ -319,12 +319,12 @@ const ScanTab = ({ isAdmin }: { isAdmin?: boolean }) => {
                 signal
             });
             const responseData = res.data;
-            
+
             updateProgress(85, 'Finalizing…');
             await new Promise(r => window.setTimeout(r, 500));
             updateProgress(100, 'Complete');
             await new Promise(r => window.setTimeout(r, 300));
-            
+
             if (responseData.success && responseData.data.cowId) {
                 setMatchedCow(responseData.data);
                 setDialogOpen(true);
@@ -346,8 +346,8 @@ const ScanTab = ({ isAdmin }: { isAdmin?: boolean }) => {
             else if (msg.toLowerCase().includes('spoof')) { title = 'Invalid Image'; reason = 'The image appears to be a spoof. Please take a live photo.'; }
             else if (msg.toLowerCase().includes('unavailable')) { title = 'Service Unavailable'; reason = 'The AI service is temporarily unavailable. Try again later.'; }
             setNotFoundTitle(title); setNotFoundReason(reason); setNotFoundOpen(true);
-        } finally { 
-            stopProcessing(); 
+        } finally {
+            stopProcessing();
         }
     };
 
@@ -516,7 +516,7 @@ const SearchTab = ({ isAdmin }: { isAdmin?: boolean }) => {
     }, [searchTerm, addHistory]);
 
     const fetchCattle = async (search: string) => {
-        const token = isAdmin 
+        const token = isAdmin
             ? localStorage.getItem('adminToken')
             : (await Preferences.get({ key: 'jwt_token' })).value;
         const endpoint = isAdmin ? '/api/admin/cattle' : '/api/farmer/cattle';
@@ -527,9 +527,9 @@ const SearchTab = ({ isAdmin }: { isAdmin?: boolean }) => {
         return res.data;
     };
 
-    const { data: cowsResponse, isLoading } = useQuery({ 
-        queryKey: ['cows', debouncedSearch, isAdmin], 
-        queryFn: () => fetchCattle(debouncedSearch) 
+    const { data: cowsResponse, isLoading } = useQuery({
+        queryKey: ['cows', debouncedSearch, isAdmin],
+        queryFn: () => fetchCattle(debouncedSearch)
     });
 
     const filteredCows = cowsResponse?.data || [];

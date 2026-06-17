@@ -37,13 +37,13 @@ export const createCattleRegistration = async (req: any, farmerId: string, paylo
         (err as any).statusCode = 400;
         throw err;
     }
-    
+
 
     let uploadedFiles: string[] = [];
     let savedCow: any = null;
 
     try {
-        const safeUpload = async (buffer: Buffer, folderName: string = 'ama-gau-dhana-images') => {
+        const safeUpload = async (buffer: Buffer, folderName: string = 'gonidhi-images') => {
             if (req.isAborted) throw new Error('Client Closed Request');
             const result = await uploadBufferToCloudinary(buffer, folderName);
             if (result) uploadedFiles.push(result);
@@ -58,7 +58,7 @@ export const createCattleRegistration = async (req: any, farmerId: string, paylo
 
         const faceProfileFile = files.faceImage[0];
         const muzzleFile = files.muzzleImage[0];
-        
+
         let faceProfileCloudinary, muzzleCloudinary, leftProfileCloudinary, rightProfileCloudinary, backViewCloudinary, tailViewCloudinary, selfieCloudinary;
         let faceTelemetryCloudinary, muzzleTelemetryCloudinary;
 
@@ -72,8 +72,8 @@ export const createCattleRegistration = async (req: any, farmerId: string, paylo
             selfieCloudinary = await safeUploadIfPresent(files.selfieImage);
 
             // Telemetry uploads
-            faceTelemetryCloudinary = await safeUpload(faceProfileFile.buffer, 'ama-gau-dhana-telemetry');
-            muzzleTelemetryCloudinary = await safeUpload(muzzleFile.buffer, 'ama-gau-dhana-telemetry');
+            faceTelemetryCloudinary = await safeUpload(faceProfileFile.buffer, 'gonidhi-telemetry');
+            muzzleTelemetryCloudinary = await safeUpload(muzzleFile.buffer, 'gonidhi-telemetry');
         } catch (uploadError) {
             logger.error(uploadError, 'Error during image uploads, rolling back:');
             const err = new Error('Failed to upload images. Please try again.');
@@ -163,7 +163,7 @@ export const createCattleRegistration = async (req: any, farmerId: string, paylo
                 cow_id: savedCow._id.toString(),
                 farmer_id: farmerId,
                 cow_name: name,
-                face_image_url: faceTelemetryCloudinary, 
+                face_image_url: faceTelemetryCloudinary,
                 muzzle_image_url: muzzleTelemetryCloudinary
             });
         } catch (apiError: any) {
@@ -189,7 +189,7 @@ export const createCattleRegistration = async (req: any, farmerId: string, paylo
             logger.error(rollbackErr, 'Error executing DB rollback:');
         } finally {
             for (const fileUrl of uploadedFiles) {
-                await deleteFromCloudinary(fileUrl).catch(() => {});
+                await deleteFromCloudinary(fileUrl).catch(() => { });
             }
         }
         throw error;
@@ -199,15 +199,15 @@ export const createCattleRegistration = async (req: any, farmerId: string, paylo
 export const cleanupCowCloudResources = async (cow: any) => {
     try {
         if (cow.photos) {
-            if (cow.photos.faceProfile) await deleteFromCloudinary(cow.photos.faceProfile).catch(() => {});
-            if (cow.photos.muzzle) await deleteFromCloudinary(cow.photos.muzzle).catch(() => {});
-            if (cow.photos.leftProfile) await deleteFromCloudinary(cow.photos.leftProfile).catch(() => {});
-            if (cow.photos.rightProfile) await deleteFromCloudinary(cow.photos.rightProfile).catch(() => {});
-            if (cow.photos.backView) await deleteFromCloudinary(cow.photos.backView).catch(() => {});
-            if (cow.photos.tailView) await deleteFromCloudinary(cow.photos.tailView).catch(() => {});
-            if (cow.photos.selfie) await deleteFromCloudinary(cow.photos.selfie).catch(() => {});
+            if (cow.photos.faceProfile) await deleteFromCloudinary(cow.photos.faceProfile).catch(() => { });
+            if (cow.photos.muzzle) await deleteFromCloudinary(cow.photos.muzzle).catch(() => { });
+            if (cow.photos.leftProfile) await deleteFromCloudinary(cow.photos.leftProfile).catch(() => { });
+            if (cow.photos.rightProfile) await deleteFromCloudinary(cow.photos.rightProfile).catch(() => { });
+            if (cow.photos.backView) await deleteFromCloudinary(cow.photos.backView).catch(() => { });
+            if (cow.photos.tailView) await deleteFromCloudinary(cow.photos.tailView).catch(() => { });
+            if (cow.photos.selfie) await deleteFromCloudinary(cow.photos.selfie).catch(() => { });
         }
-        
+
         // Instruct DL-API to delete vectors
         try {
             await dlApiClient.delete(`/cow/${cow._id}`);

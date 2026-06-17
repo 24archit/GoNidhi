@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import logger from '../../utils/logger';
 
 // Fallback secret for local dev environments only
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_for_dev_gau_netra4321';
+const JWT_SECRET = process.env.JWT_SECRET;
 
 export const registerFarmer = async (req: any, res: any) => {
     try {

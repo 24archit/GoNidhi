@@ -15,7 +15,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import CircularProgress from '@mui/material/CircularProgress';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE } from '@ama-gau-dhana/shared';
+import { API_BASE } from '@gonidhi/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import PullToRefresh from 'react-simple-pull-to-refresh';
 
@@ -263,195 +263,195 @@ export default function Analytics() {
 
   return (
     <PullToRefresh onRefresh={async () => { await refetch(); }} pullingContent="" maxPullDownDistance={100} resistance={2}>
-    <Box>
-      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2, mb: 3 }}>
-        <Box>
-          <Typography variant="h4" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-            AI Inference Logs
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-          <Badge badgeContent={activeFilterCount || null} color="primary" sx={{ '& .MuiBadge-badge': { right: 5, top: 5 } }}>
+      <Box>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2, mb: 3 }}>
+          <Box>
+            <Typography variant="h4" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+              AI Inference Logs
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+            <Badge badgeContent={activeFilterCount || null} color="primary" sx={{ '& .MuiBadge-badge': { right: 5, top: 5 } }}>
+              <Button
+                size="small"
+                variant={showFilters ? 'contained' : 'outlined'}
+                startIcon={<FilterListIcon />}
+                onClick={() => setShowFilters(!showFilters)}
+                sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
+              >
+                Filters
+              </Button>
+            </Badge>
+            {activeFilterCount > 0 && (
+              <Button
+                size="small"
+                variant="text"
+                color="error"
+                sx={{ textTransform: 'none', fontWeight: 600 }}
+                onClick={() => setAppliedFilters({ statuses: [], types: [], year: '' })}
+              >
+                Clear
+              </Button>
+            )}
             <Button
               size="small"
-              variant={showFilters ? 'contained' : 'outlined'}
-              startIcon={<FilterListIcon />}
-              onClick={() => setShowFilters(!showFilters)}
-              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
+              variant="outlined"
+              startIcon={isRefetching ? <CircularProgress size={20} /> : <RefreshIcon />}
+              onClick={() => { queryClient.resetQueries({ queryKey: ['analytics-logs', appliedFilters] }); refetch(); }}
+              disabled={isLoading || isRefetching || isExporting}
+              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
             >
-              Filters
+              {isRefetching ? 'Refreshing…' : 'Refresh'}
             </Button>
-          </Badge>
-          {activeFilterCount > 0 && (
             <Button
               size="small"
-              variant="text"
-              color="error"
-              sx={{ textTransform: 'none', fontWeight: 600 }}
-              onClick={() => setAppliedFilters({ statuses: [], types: [], year: '' })}
+              variant="contained"
+              color="primary"
+              startIcon={<DownloadIcon />}
+              onClick={handleExport}
+              disabled={isExporting}
+              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
             >
-              Clear
+              {isExporting ? 'Exporting…' : 'Export'}
             </Button>
-          )}
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={isRefetching ? <CircularProgress size={20} /> : <RefreshIcon />}
-            onClick={() => { queryClient.resetQueries({ queryKey: ['analytics-logs', appliedFilters] }); refetch(); }}
-            disabled={isLoading || isRefetching || isExporting}
-            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
-          >
-            {isRefetching ? 'Refreshing…' : 'Refresh'}
-          </Button>
-          <Button
-            size="small"
-            variant="contained"
-            color="primary"
-            startIcon={<DownloadIcon />}
-            onClick={handleExport}
-            disabled={isExporting}
-            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
-          >
-            {isExporting ? 'Exporting…' : 'Export'}
-          </Button>
+          </Box>
         </Box>
-      </Box>
 
-      {/* ── Stat strip ── */}
-      <Paper variant="outlined" sx={{ mb: 3, borderRadius: 2, overflow: 'hidden' }}>
-        <Grid container>
-          {[
-            { label: 'Total Inferences', value: String(metrics.totalInferences || total) },
-            { label: 'Avg Inference Time', value: `${(metrics.avgTime / 1000).toFixed(2)}s` },
-            { label: 'Success Rate', value: `${(metrics.successRate * 100).toFixed(1)}%` },
-          ].map((s, i, arr) => (
-            <Grid key={s.label} size={{ xs: 12, sm: 4 }}>
-              <Box sx={{ px: 3, py: 2, borderRight: { sm: i < arr.length - 1 ? '1px solid' : 'none' }, borderColor: 'divider', borderBottom: { xs: i < arr.length - 1 ? '1px solid' : 'none', sm: 'none' } }}>
-                <StatTile label={s.label} value={s.value} />
-              </Box>
-            </Grid>
-          ))}
-        </Grid>
-      </Paper>
-
-      {/* ── Filter panel ── */}
-      <Collapse in={showFilters}>
-        <Paper variant="outlined" sx={{ mb: 3, p: 3, borderRadius: 2, bgcolor: 'background.paper' }}>
-          <Grid container spacing={4}>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: 'uppercase', mb: 1.5 }}>
-                Match Status
-              </Typography>
-              <Grid container spacing={1}>
-                {ALL_STATUSES.map(s => (
-                  <Grid key={s.value} size={{ xs: 6 }}>
-                    <FormControlLabel
-                      control={
-                        <Checkbox checked={selectedStatuses.includes(s.value)}
-                          onChange={e => setSelectedStatuses(prev => e.target.checked ? [...prev, s.value] : prev.filter(x => x !== s.value))}
-                        />
-                      }
-                      label={<Typography variant="body2">{s.label}</Typography>}
-                    />
-                  </Grid>
-                ))}
+        {/* ── Stat strip ── */}
+        <Paper variant="outlined" sx={{ mb: 3, borderRadius: 2, overflow: 'hidden' }}>
+          <Grid container>
+            {[
+              { label: 'Total Inferences', value: String(metrics.totalInferences || total) },
+              { label: 'Avg Inference Time', value: `${(metrics.avgTime / 1000).toFixed(2)}s` },
+              { label: 'Success Rate', value: `${(metrics.successRate * 100).toFixed(1)}%` },
+            ].map((s, i, arr) => (
+              <Grid key={s.label} size={{ xs: 12, sm: 4 }}>
+                <Box sx={{ px: 3, py: 2, borderRight: { sm: i < arr.length - 1 ? '1px solid' : 'none' }, borderColor: 'divider', borderBottom: { xs: i < arr.length - 1 ? '1px solid' : 'none', sm: 'none' } }}>
+                  <StatTile label={s.label} value={s.value} />
+                </Box>
               </Grid>
-            </Grid>
-            <Grid size={{ xs: 6, sm: 3 }}>
-              <Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: 'uppercase', mb: 1.5 }}>
-                Type
-              </Typography>
-              <FormGroup>
-                {ALL_TYPES.map(t => (
-                  <FormControlLabel key={t.value}
-                    control={<Checkbox checked={selectedTypes.includes(t.value)}
-                      onChange={e => setSelectedTypes(prev => e.target.checked ? [...prev, t.value] : prev.filter(x => x !== t.value))} />}
-                    label={<Typography variant="body2">{t.label}</Typography>}
-                  />
-                ))}
-              </FormGroup>
-            </Grid>
-            <Grid size={{ xs: 6, sm: 3 }}>
-              <Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: 'uppercase', mb: 1.5 }}>
-                Year
-              </Typography>
-              <FormControl fullWidth sx={{ mb: 2 }}>
-                <Select value={selectedYear} displayEmpty onChange={e => setSelectedYear(e.target.value)} sx={{ borderRadius: 2 }}>
-                  <MenuItem value=""><em>All Years</em></MenuItem>
-                  <MenuItem value="2024">2024</MenuItem>
-                  <MenuItem value="2025">2025</MenuItem>
-                  <MenuItem value="2026">2026</MenuItem>
-                </Select>
-              </FormControl>
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                <Button variant="outlined" color="inherit" fullWidth onClick={() => { setSelectedStatuses([]); setSelectedTypes([]); setSelectedYear(''); }}>
-                  Reset
-                </Button>
-                <Button variant="contained" color="primary" fullWidth onClick={handleApplyFilters}>
-                  Apply
-                </Button>
-              </Box>
-            </Grid>
+            ))}
           </Grid>
         </Paper>
-      </Collapse>
 
-      {/* ── Table ── */}
-      <Paper sx={{ width: '100%', overflow: 'hidden', borderRadius: 3, boxShadow: '0 8px 32px rgba(0,0,0,0.05)', border: '1px solid rgba(0,0,0,0.05)' }}>
-        <TableContainer sx={{ maxHeight: 'calc(100vh - 250px)' }}>
-          <Table stickyHeader>
-            <TableHead>
-              <TableRow>
-                <TableCell sx={{ bgcolor: '#f8f9fa', fontWeight: 'bold' }}>Record</TableCell>
-                <TableCell sx={{ bgcolor: '#f8f9fa', fontWeight: 'bold' }}>Status</TableCell>
-                <TableCell sx={{ bgcolor: '#f8f9fa', fontWeight: 'bold' }}>Type</TableCell>
-                <TableCell sx={{ bgcolor: '#f8f9fa', fontWeight: 'bold' }}>Confidence</TableCell>
-                <TableCell sx={{ bgcolor: '#f8f9fa', fontWeight: 'bold' }}>AI Correct?</TableCell>
-                <TableCell sx={{ bgcolor: '#f8f9fa', fontWeight: 'bold' }}></TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {logs.map((log: any) => ( // eslint-disable-line @typescript-eslint/no-explicit-any
-                <LogRow
-                  key={log._id}
-                  log={log}
-                  onCorrectnessChange={handleCorrectnessChange}
-                  onClick={() => navigate(`/analytics/${log._id}`)}
-                />
-              ))}
+        {/* ── Filter panel ── */}
+        <Collapse in={showFilters}>
+          <Paper variant="outlined" sx={{ mb: 3, p: 3, borderRadius: 2, bgcolor: 'background.paper' }}>
+            <Grid container spacing={4}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: 'uppercase', mb: 1.5 }}>
+                  Match Status
+                </Typography>
+                <Grid container spacing={1}>
+                  {ALL_STATUSES.map(s => (
+                    <Grid key={s.value} size={{ xs: 6 }}>
+                      <FormControlLabel
+                        control={
+                          <Checkbox checked={selectedStatuses.includes(s.value)}
+                            onChange={e => setSelectedStatuses(prev => e.target.checked ? [...prev, s.value] : prev.filter(x => x !== s.value))}
+                          />
+                        }
+                        label={<Typography variant="body2">{s.label}</Typography>}
+                      />
+                    </Grid>
+                  ))}
+                </Grid>
+              </Grid>
+              <Grid size={{ xs: 6, sm: 3 }}>
+                <Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: 'uppercase', mb: 1.5 }}>
+                  Type
+                </Typography>
+                <FormGroup>
+                  {ALL_TYPES.map(t => (
+                    <FormControlLabel key={t.value}
+                      control={<Checkbox checked={selectedTypes.includes(t.value)}
+                        onChange={e => setSelectedTypes(prev => e.target.checked ? [...prev, t.value] : prev.filter(x => x !== t.value))} />}
+                      label={<Typography variant="body2">{t.label}</Typography>}
+                    />
+                  ))}
+                </FormGroup>
+              </Grid>
+              <Grid size={{ xs: 6, sm: 3 }}>
+                <Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: 'uppercase', mb: 1.5 }}>
+                  Year
+                </Typography>
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                  <Select value={selectedYear} displayEmpty onChange={e => setSelectedYear(e.target.value)} sx={{ borderRadius: 2 }}>
+                    <MenuItem value=""><em>All Years</em></MenuItem>
+                    <MenuItem value="2024">2024</MenuItem>
+                    <MenuItem value="2025">2025</MenuItem>
+                    <MenuItem value="2026">2026</MenuItem>
+                  </Select>
+                </FormControl>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <Button variant="outlined" color="inherit" fullWidth onClick={() => { setSelectedStatuses([]); setSelectedTypes([]); setSelectedYear(''); }}>
+                    Reset
+                  </Button>
+                  <Button variant="contained" color="primary" fullWidth onClick={handleApplyFilters}>
+                    Apply
+                  </Button>
+                </Box>
+              </Grid>
+            </Grid>
+          </Paper>
+        </Collapse>
 
-              {logs.length === 0 && !isLoading && (
+        {/* ── Table ── */}
+        <Paper sx={{ width: '100%', overflow: 'hidden', borderRadius: 3, boxShadow: '0 8px 32px rgba(0,0,0,0.05)', border: '1px solid rgba(0,0,0,0.05)' }}>
+          <TableContainer sx={{ maxHeight: 'calc(100vh - 250px)' }}>
+            <Table stickyHeader>
+              <TableHead>
                 <TableRow>
-                  <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
-                    <Typography variant="body1" color="textSecondary">No records match your criteria.</Typography>
-                  </TableCell>
+                  <TableCell sx={{ bgcolor: '#f8f9fa', fontWeight: 'bold' }}>Record</TableCell>
+                  <TableCell sx={{ bgcolor: '#f8f9fa', fontWeight: 'bold' }}>Status</TableCell>
+                  <TableCell sx={{ bgcolor: '#f8f9fa', fontWeight: 'bold' }}>Type</TableCell>
+                  <TableCell sx={{ bgcolor: '#f8f9fa', fontWeight: 'bold' }}>Confidence</TableCell>
+                  <TableCell sx={{ bgcolor: '#f8f9fa', fontWeight: 'bold' }}>AI Correct?</TableCell>
+                  <TableCell sx={{ bgcolor: '#f8f9fa', fontWeight: 'bold' }}></TableCell>
                 </TableRow>
-              )}
+              </TableHead>
+              <TableBody>
+                {logs.map((log: any) => ( // eslint-disable-line @typescript-eslint/no-explicit-any
+                  <LogRow
+                    key={log._id}
+                    log={log}
+                    onCorrectnessChange={handleCorrectnessChange}
+                    onClick={() => navigate(`/analytics/${log._id}`)}
+                  />
+                ))}
 
-              {isLoading && (
-                <TableRow>
-                  <TableCell colSpan={6} align="center" sx={{ py: 8 }}>
-                    <CircularProgress size={40} />
-                    <Typography variant="body2" sx={{ mt: 1 }} color="textSecondary">Loading analytics logs...</Typography>
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
+                {logs.length === 0 && !isLoading && (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                      <Typography variant="body1" color="textSecondary">No records match your criteria.</Typography>
+                    </TableCell>
+                  </TableRow>
+                )}
 
-        <TablePagination
-          rowsPerPageOptions={[10, 25, 50, 100]}
-          component="div"
-          count={total}
-          rowsPerPage={rowsPerPage}
-          page={page}
-          onPageChange={(_, p) => setPage(p)}
-          onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
-          sx={{ borderTop: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}
-        />
-      </Paper>
-    </Box>
+                {isLoading && (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center" sx={{ py: 8 }}>
+                      <CircularProgress size={40} />
+                      <Typography variant="body2" sx={{ mt: 1 }} color="textSecondary">Loading analytics logs...</Typography>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+
+          <TablePagination
+            rowsPerPageOptions={[10, 25, 50, 100]}
+            component="div"
+            count={total}
+            rowsPerPage={rowsPerPage}
+            page={page}
+            onPageChange={(_, p) => setPage(p)}
+            onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+            sx={{ borderTop: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}
+          />
+        </Paper>
+      </Box>
     </PullToRefresh>
   );
 }

@@ -31,7 +31,7 @@ import Register from './pages/Register';
 import Onboarding from './pages/Onboarding';
 import Profile from './pages/Profile';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { AddCow, SearchCow, ProcessingProvider, GlobalProcessingOverlay } from '@ama-gau-dhana/shared';
+import { AddCow, SearchCow, ProcessingProvider, GlobalProcessingOverlay } from '@gonidhi/shared';
 import PendingCattle from './pages/PendingCattle';
 import { Capacitor } from '@capacitor/core';
 import { StatusBar, Style } from '@capacitor/status-bar';
@@ -96,7 +96,7 @@ const LocationGuard = ({ children }: { children: React.ReactNode }) => {
         <ErrorOutline color="error" sx={{ fontSize: 64, mb: 2 }} />
         <Typography variant="h5" fontWeight="bold" gutterBottom>Location Required</Typography>
         <Typography variant="body1" color="text.secondary" mb={4}>
-          Ama Gaudhana requires your GPS location to be turned on to verify livestock registration areas. Please enable your Location Services and location permissions to continue using the app.
+          GoNidhi requires your GPS location to be turned on to verify livestock registration areas. Please enable your Location Services and location permissions to continue using the app.
         </Typography>
         <Button variant="contained" onClick={() => window.location.reload()}>Retry</Button>
       </Box>
@@ -170,15 +170,15 @@ const App: React.FC = () => {
   useEffect(() => {
     // Configure Native Android Status Bar (prevents overlapping)
     if (Capacitor.isNativePlatform()) {
-        StatusBar.setStyle({ style: Style.Dark });
-        StatusBar.setBackgroundColor({ color: '#1C39BB' }); // Match admin-app theme
-        StatusBar.setOverlaysWebView({ overlay: false });
+      StatusBar.setStyle({ style: Style.Dark });
+      StatusBar.setBackgroundColor({ color: '#1C39BB' }); // Match admin-app theme
+      StatusBar.setOverlaysWebView({ overlay: false });
     }
 
     // Yield to the browser render cycle first, then simulate loading
     const timer = setTimeout(() => {
-        setIsAppLoaded(true);
-    }, 1500); 
+      setIsAppLoaded(true);
+    }, 1500);
 
     return () => clearTimeout(timer);
   }, []);
@@ -230,7 +230,7 @@ const App: React.FC = () => {
                 py: 4,
               }}
             >
-              {/* Ama Gaudhana Logo */}
+              {/* GoNidhi Logo */}
               <motion.div
                 animate={{ y: [0, -5, 0] }}
                 transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
@@ -244,15 +244,14 @@ const App: React.FC = () => {
                     mb: 2,
                   }}
                 >
-                  <Box component="img" src="/logo.png" alt="Ama Gaudhana"
+                  <Box component="img" src="/logo.png" alt="GoNidhi"
                     sx={{ width: 56, height: 56, objectFit: 'contain', borderRadius: '10px' }} />
                 </Box>
               </motion.div>
 
               {/* Brand name */}
               <Typography variant="h4" sx={{ color: 'text.primary', lineHeight: 1 }}>
-                Ama{' '}
-                <Box component="span" sx={{ color: 'primary.main' }}>Gaudhana</Box>
+                <Box component="span" sx={{ color: 'primary.main' }}>GoNidhi</Box>
               </Typography>
 
               {/* Govt badge */}

@@ -267,17 +267,17 @@ const UserProfile: React.FC = () => {
                 <Paper elevation={0} sx={{ p: 3, mb: 3, borderRadius: 2, border: '1px solid #eee' }}>
                     <Box display="flex" alignItems="center" gap={2}>
                         <Box position="relative">
-                            <Avatar 
-                                src={(formData.profilePicture as string) || (user?.profilePicture as string) || ''} 
+                            <Avatar
+                                src={(formData.profilePicture as string) || (user?.profilePicture as string) || ''}
                                 onClick={() => {
                                     const imgSrc = (formData.profilePicture as string) || (user?.profilePicture as string);
                                     if (imgSrc) {
                                         openLightbox(imgSrc);
                                     }
                                 }}
-                                sx={{ 
-                                    width: 80, height: 80, 
-                                    border: '3px solid white', 
+                                sx={{
+                                    width: 80, height: 80,
+                                    border: '3px solid white',
                                     boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
                                     cursor: ((formData.profilePicture as string) || (user?.profilePicture as string)) ? 'pointer' : 'default'
                                 }}
@@ -438,7 +438,7 @@ const UserProfile: React.FC = () => {
                 )}
 
                 <Typography variant="caption" display="block" textAlign="center" color="text.disabled" sx={{ mt: 4 }}>
-                    Ama Gaudhana © 2026 Odisha Govt.
+                    GoNidhi © 2026 Odisha Govt.
                 </Typography>
 
                 {/* Logout Confirmation Dialog */}

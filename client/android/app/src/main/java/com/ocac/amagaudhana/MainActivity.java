@@ -1,4 +1,4 @@
-package com.ocac.amagaudhana;
+package com.ocac.gonidhi;
 
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;

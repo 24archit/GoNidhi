@@ -1,4 +1,4 @@
-package com.amagaudhana.admin;
+package com.gonidhi.admin;
 
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;

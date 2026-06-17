@@ -8,7 +8,7 @@ dotenv.config();
 
 // Cloudinary automatically picks up CLOUDINARY_URL from the environment variables
 
-export const uploadBase64ToCloudinary = async (base64String: string, folder: string = 'ama-gau-dhana-telemetry'): Promise<string> => {
+export const uploadBase64ToCloudinary = async (base64String: string, folder: string = 'gonidhi-telemetry'): Promise<string> => {
     try {
         if (!base64String) return "";
         if (base64String.startsWith('http')) return base64String;
@@ -31,7 +31,7 @@ export const uploadBase64ToCloudinary = async (base64String: string, folder: str
     }
 };
 
-export const uploadBufferToCloudinary = async (buffer: Buffer, folder: string = 'ama-gau-dhana-images'): Promise<string> => {
+export const uploadBufferToCloudinary = async (buffer: Buffer, folder: string = 'gonidhi-images'): Promise<string> => {
     return new Promise((resolve, reject) => {
         const uploadStream = cloudinary.uploader.upload_stream(
             {
@@ -59,7 +59,7 @@ export const uploadBufferToCloudinary = async (buffer: Buffer, folder: string = 
 export const deleteFromCloudinary = async (url: string) => {
     try {
         if (!url || !url.includes('cloudinary.com')) return;
-        
+
         // Extract public_id from typical cloudinary URL
         // https://res.cloudinary.com/<cloud_name>/image/upload/v123456789/<folder>/<filename>.<ext>
         const regex = /\/v\d+\/(.+)\.\w+$/;

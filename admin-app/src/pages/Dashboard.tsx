@@ -4,7 +4,7 @@ import PullToRefresh from 'react-simple-pull-to-refresh';
 import { People, Pets, Gavel, Warning } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 
-import { API_BASE } from '@ama-gau-dhana/shared';
+import { API_BASE } from '@gonidhi/shared';
 import { useAuth } from '../contexts/AuthContext';
 
 interface SystemStats {
@@ -16,7 +16,7 @@ interface SystemStats {
 
 export default function Dashboard() {
   const { user } = useAuth();
-  
+
   const { data: stats, isLoading: loading, refetch } = useQuery({
     queryKey: ['dashboardStats'],
     queryFn: async () => {
@@ -44,44 +44,44 @@ export default function Dashboard() {
   return (
     <PullToRefresh onRefresh={handleRefresh} pullingContent="" maxPullDownDistance={100} resistance={2}>
       <Box>
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h5" sx={{ fontWeight: 800, color: 'text.primary' }}>
-          Welcome, <Box component="span" sx={{ color: 'primary.main' }}>{user?.name || 'Admin'}</Box>
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="h5" sx={{ fontWeight: 800, color: 'text.primary' }}>
+            Welcome, <Box component="span" sx={{ color: 'primary.main' }}>{user?.name || 'Admin'}</Box>
+          </Typography>
+        </Box>
+        <Typography variant="h4" gutterBottom sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+          Overview
         </Typography>
-      </Box>
-      <Typography variant="h4" gutterBottom sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-        Overview
-      </Typography>
-      <Grid container spacing={3} sx={{ mt: 1 }}>
-        {statCards.map((stat, idx) => (
-          <Grid size={{ xs: 12, sm: 6, md: 3 }} key={idx}>
-            <Paper sx={{ p: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: 1 }}>
-              <Box>
-                <Typography color="textSecondary" variant="subtitle2">
-                  {stat.title}
-                </Typography>
-                <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
-                  {stat.value}
-                </Typography>
-              </Box>
-              <Box sx={{ p: 1.5, borderRadius: '50%', backgroundColor: 'rgba(0,0,0,0.04)' }}>
-                {stat.icon}
-              </Box>
-            </Paper>
-          </Grid>
-        ))}
-      </Grid>
-      
-      <Box sx={{ mt: 4 }}>
-        <Paper sx={{ p: 3, borderRadius: 1, minHeight: 300 }}>
-          <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
-            Recent System Activity
-          </Typography>
-          <Typography color="textSecondary">
-            System logs and recent events will be displayed here...
-          </Typography>
-        </Paper>
-      </Box>
+        <Grid container spacing={3} sx={{ mt: 1 }}>
+          {statCards.map((stat, idx) => (
+            <Grid size={{ xs: 12, sm: 6, md: 3 }} key={idx}>
+              <Paper sx={{ p: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: 1 }}>
+                <Box>
+                  <Typography color="textSecondary" variant="subtitle2">
+                    {stat.title}
+                  </Typography>
+                  <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
+                    {stat.value}
+                  </Typography>
+                </Box>
+                <Box sx={{ p: 1.5, borderRadius: '50%', backgroundColor: 'rgba(0,0,0,0.04)' }}>
+                  {stat.icon}
+                </Box>
+              </Paper>
+            </Grid>
+          ))}
+        </Grid>
+
+        <Box sx={{ mt: 4 }}>
+          <Paper sx={{ p: 3, borderRadius: 1, minHeight: 300 }}>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
+              Recent System Activity
+            </Typography>
+            <Typography color="textSecondary">
+              System logs and recent events will be displayed here...
+            </Typography>
+          </Paper>
+        </Box>
       </Box>
     </PullToRefresh>
   );

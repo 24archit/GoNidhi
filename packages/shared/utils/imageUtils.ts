@@ -5,7 +5,7 @@
  * @param quality - The output quality (0 to 1).
  * @returns A promise that resolves to the resized base64 image string.
  */
-import { API_BASE } from '@ama-gau-dhana/shared';
+import { API_BASE } from '@gonidhi/shared';
 
 export const resizeImage = (base64Str: string, maxWidth: number = 1080, quality: number = 0.85): Promise<string> => {
     return new Promise((resolve, reject) => {

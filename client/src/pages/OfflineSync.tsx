@@ -5,7 +5,7 @@ import {
 } from '@mui/material';
 import { CloudSync, ErrorOutline, Edit, CheckCircle, Cached, DeleteOutline } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import { syncManager } from '@ama-gau-dhana/shared';
+import { syncManager } from '@gonidhi/shared';
 
 const OfflineSync: React.FC = () => {
     const navigate = useNavigate();

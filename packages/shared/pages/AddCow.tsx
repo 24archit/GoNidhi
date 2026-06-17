@@ -14,7 +14,7 @@ import ErrorOutline from '@mui/icons-material/ErrorOutline';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { syncManager } from '../utils/syncManager';
 import axios from 'axios';
-import { API_BASE } from '@ama-gau-dhana/shared';
+import { API_BASE } from '@gonidhi/shared';
 import { Preferences } from '@capacitor/preferences';
 
 import { useQueryClient } from '@tanstack/react-query';
@@ -553,7 +553,7 @@ const StepReview: React.FC<StepReviewProps> = ({ formData, setActiveStep, isAdmi
 
         <Box sx={{ textAlign: 'center', mt: 2 }}>
             <Typography variant="caption" color="text.secondary">
-                By clicking submit, this data and the metadata will be uploaded to the Ama Gaudhana AI Server.
+                By clicking submit, this data and the metadata will be uploaded to the GoNidhi AI Server.
             </Typography>
         </Box>
     </Stack>

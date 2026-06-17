@@ -33,7 +33,7 @@ const Onboarding: React.FC = () => {
             }}
         >
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 2 }}>
-                <img src="/logo.png" alt="Ama Gaudhana Logo" style={{ width: '80px', height: '80px', objectFit: 'contain' }} />
+                <img src="/logo.png" alt="GoNidhi Logo" style={{ width: '80px', height: '80px', objectFit: 'contain' }} />
                 <Typography variant="caption" sx={{ fontWeight: 600, color: 'primary.main', letterSpacing: 1, mt: 1, textTransform: 'uppercase' }}>
                     Govt. of Odisha
                 </Typography>
@@ -52,7 +52,7 @@ const Onboarding: React.FC = () => {
                                 Admin Dashboard
                             </Typography>
                             <Typography variant="body1" color="text.secondary">
-                                Manage the Ama Gaudhana ecosystem, monitor farmers, and resolve disputes centrally.
+                                Manage the GoNidhi ecosystem, monitor farmers, and resolve disputes centrally.
                             </Typography>
                         </Box>
                     </SwiperSlide>

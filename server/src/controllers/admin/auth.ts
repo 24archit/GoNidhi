@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import logger from '../../utils/logger';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_for_dev_gau_netra4321';
+const JWT_SECRET = process.env.JWT_SECRET;
 
 export const loginAdmin = async (req: Request, res: Response) => {
     try {

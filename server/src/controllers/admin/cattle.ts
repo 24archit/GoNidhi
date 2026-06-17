@@ -21,10 +21,10 @@ export const getCattleDetails = async (req: Request, res: Response) => {
             if (recentRejections.has(id)) {
                 const rejectionData = recentRejections.get(id);
                 let failureStatus = typeof rejectionData === 'string' ? rejectionData : rejectionData?.status;
-                let userMessage = typeof rejectionData === 'object' && rejectionData?.message 
-                    ? rejectionData.message 
+                let userMessage = typeof rejectionData === 'object' && rejectionData?.message
+                    ? rejectionData.message
                     : `Registration failed due to: ${failureStatus}`;
-                
+
                 if (!userMessage || userMessage.includes('Registration failed due to')) {
                     if (failureStatus === 'SPOOF_DETECTED_MUZZLE') {
                         userMessage = 'Registration failed: Spoofing detected in the Muzzle image. Make sure it is a real photo, not a screen or print.';
@@ -38,9 +38,9 @@ export const getCattleDetails = async (req: Request, res: Response) => {
                         userMessage = 'Registration failed: This cow is already registered.';
                     }
                 }
-                
-                return res.status(400).json({ 
-                    success: false, 
+
+                return res.status(400).json({
+                    success: false,
                     isRejected: true,
                     status: failureStatus,
                     message: userMessage
@@ -51,16 +51,16 @@ export const getCattleDetails = async (req: Request, res: Response) => {
         if (cattle.aiMetadata.status === 'PENDING') {
             try {
                 const statusRes = await dlApiClient.get(`/status/${cattle._id}`);
-                
+
                 if (statusRes.data.status === 'COMPLETED') {
                     logger.info(`[DL-API Sync Admin] Polled DL-API and found COMPLETED result for cow ${cattle._id}. Processing locally.`);
                     await processDlApiResult(statusRes.data.result);
-                    
+
                     const updatedCow = await Cattle.findById(cattle._id).populate('farmerId', 'name contact.phone location.village location.district');
                     if (!updatedCow) {
                         const rejectionData = recentRejections.get(cattle._id.toString());
-                        return res.status(400).json({ 
-                            success: false, 
+                        return res.status(400).json({
+                            success: false,
                             isRejected: true,
                             status: rejectionData ? (rejectionData as any).status : 'FAILED',
                             message: rejectionData ? (rejectionData as any).message : 'Registration failed.'
@@ -82,9 +82,9 @@ export const getCattleDetails = async (req: Request, res: Response) => {
                         });
                         session.endSession();
                     }
-                    
-                    return res.status(400).json({ 
-                        success: false, 
+
+                    return res.status(400).json({
+                        success: false,
                         isRejected: true,
                         status: 'AI_CRASH',
                         message: 'The AI server dropped the registration request due to an internal error. Please try again.'
@@ -112,7 +112,7 @@ export const getAllCattle = async (req: Request, res: Response) => {
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 20;
         const search = req.query.search as string;
-        
+
         let query: any = {
             'aiMetadata.status': { $nin: ['PENDING', 'PROCESSING_RESULT'] }
         };
@@ -148,7 +148,7 @@ export const getPendingCattle = async (req: Request, res: Response) => {
     try {
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 20;
-        
+
         let query: any = {
             'aiMetadata.status': { $in: ['PENDING', 'PROCESSING_RESULT'] }
         };
@@ -205,7 +205,7 @@ export const proxyRegisterCow = async (req: Request, res: Response) => {
         if (!files?.muzzleImage?.[0] || !files?.faceImage?.[0]) {
             return res.status(400).json({ success: false, message: 'Missing required biometrics. Both a Face Profile and a Muzzle capture are strictly required.' });
         }
-        
+
         if (tagNo && tagNo.trim() !== '') {
             const existingCow = await Cattle.findOne({ tagNumber: tagNo });
             if (existingCow) {
@@ -225,7 +225,7 @@ export const proxyRegisterCow = async (req: Request, res: Response) => {
         const safeUploadIfPresent = async (fileArray: Express.Multer.File[] | undefined): Promise<string> => {
             if (!fileArray || fileArray.length === 0) return '';
             const file = fileArray[0];
-            return await safeUpload(file.buffer, 'ama-gau-dhana-images');
+            return await safeUpload(file.buffer, 'gonidhi-images');
         };
 
         let faceProfileCloudinary = '', muzzleCloudinary = '', leftProfileCloudinary = '', rightProfileCloudinary = '', backViewCloudinary = '', tailViewCloudinary = '', selfieCloudinary = '';
@@ -235,9 +235,9 @@ export const proxyRegisterCow = async (req: Request, res: Response) => {
         try {
             const faceProfileFile = files.faceImage[0];
             const muzzleFile = files.muzzleImage[0];
-            
-            faceProfileCloudinary = await safeUpload(faceProfileFile.buffer, 'ama-gau-dhana-images');
-            muzzleCloudinary = await safeUpload(muzzleFile.buffer, 'ama-gau-dhana-images');
+
+            faceProfileCloudinary = await safeUpload(faceProfileFile.buffer, 'gonidhi-images');
+            muzzleCloudinary = await safeUpload(muzzleFile.buffer, 'gonidhi-images');
             leftProfileCloudinary = await safeUploadIfPresent(files.leftImage);
             rightProfileCloudinary = await safeUploadIfPresent(files.rightImage);
             backViewCloudinary = await safeUploadIfPresent(files.backImage);
@@ -245,8 +245,8 @@ export const proxyRegisterCow = async (req: Request, res: Response) => {
             selfieCloudinary = await safeUploadIfPresent(files.selfieImage);
 
             // Upload isolated telemetry copies for the AI DL-API
-            faceTelemetryCloudinary = await safeUpload(faceProfileFile.buffer, 'ama-gau-dhana-telemetry');
-            muzzleTelemetryCloudinary = await safeUpload(muzzleFile.buffer, 'ama-gau-dhana-telemetry');
+            faceTelemetryCloudinary = await safeUpload(faceProfileFile.buffer, 'gonidhi-telemetry');
+            muzzleTelemetryCloudinary = await safeUpload(muzzleFile.buffer, 'gonidhi-telemetry');
 
             const newCow = new Cattle({
                 farmerId: farmer._id,
@@ -311,7 +311,7 @@ export const proxyRegisterCow = async (req: Request, res: Response) => {
 
         } catch (error: any) {
             logger.error(error.message || error, 'Error proxy registering cow (Rollback Triggered):');
-            
+
             if (savedCow) {
                 const session = await mongoose.startSession();
                 await session.withTransaction(async () => {
@@ -321,7 +321,7 @@ export const proxyRegisterCow = async (req: Request, res: Response) => {
                 session.endSession();
             }
             for (const fileUrl of uploadedFiles) {
-                await deleteFromCloudinary(fileUrl).catch(() => {});
+                await deleteFromCloudinary(fileUrl).catch(() => { });
             }
 
             res.status(500).json({ success: false, message: error.message || 'Could not complete registration. Rolled back successfully.' });
@@ -354,7 +354,7 @@ export const deleteCattle = async (req: Request, res: Response) => {
         }
 
         // Background cleanup of cloud resources
-            cleanupCowCloudResources(deletedCattle);
+        cleanupCowCloudResources(deletedCattle);
 
         res.status(200).json({ success: true, message: 'Cattle deleted successfully' });
     } catch (error: any) {
@@ -370,7 +370,7 @@ export const updateCattle = async (req: Request, res: Response) => {
             return res.status(404).json({ success: false, message: 'Cattle not found' });
         }
         const updateData = req.body;
-        
+
         // Prevent editing of images, system fields, and farmerId through this basic update route
         delete updateData._id;
         delete updateData.farmerId;
@@ -400,7 +400,7 @@ export const updateCattle = async (req: Request, res: Response) => {
 export const proxySearchCow = async (req: Request, res: Response) => {
     // Create an AbortController to cancel the DL API request if the client disconnects
     const abortController = new AbortController();
-    
+
     res.on('close', () => {
         // If the socket closes before we could send our response, the client disconnected.
         if (!res.writableEnded) {
@@ -422,8 +422,8 @@ export const proxySearchCow = async (req: Request, res: Response) => {
             const muzzleFile = files.muzzleImage[0];
 
             // Search images are uploaded DIRECTLY to telemetry to prevent root pollution
-            faceCloudinary = await uploadBufferToCloudinary(faceFile.buffer, 'ama-gau-dhana-telemetry');
-            muzzleCloudinary = await uploadBufferToCloudinary(muzzleFile.buffer, 'ama-gau-dhana-telemetry');
+            faceCloudinary = await uploadBufferToCloudinary(faceFile.buffer, 'gonidhi-telemetry');
+            muzzleCloudinary = await uploadBufferToCloudinary(muzzleFile.buffer, 'gonidhi-telemetry');
 
             const dlResponse = await dlApiClient.post(`/search`, {
                 user_id: 'admin_proxy',
@@ -444,15 +444,15 @@ export const proxySearchCow = async (req: Request, res: Response) => {
             }
 
             if (match === false || !cow_id) {
-                return res.status(200).json({ 
-                    success: true, 
+                return res.status(200).json({
+                    success: true,
                     data: {
                         cowId: null,
                         cow: null,
                         confidence: 0,
                         match: false
                     },
-                    message: reason || 'Cow not found. No suspects passed the AI evaluation.' 
+                    message: reason || 'Cow not found. No suspects passed the AI evaluation.'
                 });
             }
 
@@ -473,8 +473,8 @@ export const proxySearchCow = async (req: Request, res: Response) => {
 
         } catch (dlError: any) {
             // Rollback telemetry images if DL API fails or client aborts
-            if (faceCloudinary) await deleteFromCloudinary(faceCloudinary).catch(() => {});
-            if (muzzleCloudinary) await deleteFromCloudinary(muzzleCloudinary).catch(() => {});
+            if (faceCloudinary) await deleteFromCloudinary(faceCloudinary).catch(() => { });
+            if (muzzleCloudinary) await deleteFromCloudinary(muzzleCloudinary).catch(() => { });
 
             if (axios.isCancel(dlError) || dlError.name === 'AbortError' || dlError.name === 'CanceledError') {
                 logger.info('Client disconnected, canceled DL API search request.');
