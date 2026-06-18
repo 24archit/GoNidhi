@@ -33,14 +33,17 @@ export const startCleanupJob = () => {
                 
                 let deletedCow: any = null;
                 const session = await mongoose.startSession();
-                await session.withTransaction(async () => {
-                    // Atomically check if it's still PENDING before deleting
-                    deletedCow = await Cattle.findOneAndDelete({ _id: cow._id, 'aiMetadata.status': { $in: ['PENDING', 'PROCESSING_RESULT'] } }, { session });
-                    if (deletedCow && deletedCow.farmerId) {
-                        await User.findByIdAndUpdate(deletedCow.farmerId, { $pull: { cows: deletedCow._id } }, { session });
-                    }
-                });
-                session.endSession();
+                try {
+                    await session.withTransaction(async () => {
+                        // Atomically check if it's still PENDING before deleting
+                        deletedCow = await Cattle.findOneAndDelete({ _id: cow._id, 'aiMetadata.status': { $in: ['PENDING', 'PROCESSING_RESULT'] } }, { session });
+                        if (deletedCow && deletedCow.farmerId) {
+                            await User.findByIdAndUpdate(deletedCow.farmerId, { $pull: { cows: deletedCow._id } }, { session });
+                        }
+                    });
+                } finally {
+                    await session.endSession();
+                }
 
                 if (deletedCow) {
                     // Only cleanup cloud resources if we successfully deleted the PENDING cow

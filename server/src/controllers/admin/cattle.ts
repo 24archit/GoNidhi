@@ -75,12 +75,15 @@ export const getCattleDetails = async (req: Request, res: Response) => {
                     if (deletedCow) {
                         await cleanupCowCloudResources(deletedCow);
                         const session = await mongoose.startSession();
-                        await session.withTransaction(async () => {
-                            if (deletedCow.farmerId) {
-                                await User.findByIdAndUpdate(deletedCow.farmerId._id || deletedCow.farmerId, { $pull: { cows: deletedCow._id } }, { session });
-                            }
-                        });
-                        session.endSession();
+                        try {
+                            await session.withTransaction(async () => {
+                                if (deletedCow.farmerId) {
+                                    await User.findByIdAndUpdate(deletedCow.farmerId._id || deletedCow.farmerId, { $pull: { cows: deletedCow._id } }, { session });
+                                }
+                            });
+                        } finally {
+                            await session.endSession();
+                        }
                     }
 
                     return res.status(400).json({
@@ -296,12 +299,15 @@ export const proxyRegisterCow = async (req: Request, res: Response) => {
 
             const session = await mongoose.startSession();
             if ((req as any).isAborted) throw new Error('Client Closed Request');
-            await session.withTransaction(async () => {
-                const [savedItems] = await Cattle.create([newCow], { session });
-                savedCow = savedItems;
-                await User.findByIdAndUpdate(farmer._id, { $push: { cows: savedCow._id } }, { session });
-            });
-            session.endSession();
+            try {
+                await session.withTransaction(async () => {
+                    const [savedItems] = await Cattle.create([newCow], { session });
+                    savedCow = savedItems;
+                    await User.findByIdAndUpdate(farmer._id, { $push: { cows: savedCow._id } }, { session });
+                });
+            } finally {
+                await session.endSession();
+            }
 
             await dlApiClient.post(`/register`, {
                 cow_id: savedCow._id.toString(),
@@ -322,11 +328,14 @@ export const proxyRegisterCow = async (req: Request, res: Response) => {
 
             if (savedCow) {
                 const session = await mongoose.startSession();
-                await session.withTransaction(async () => {
-                    await Cattle.findByIdAndDelete(savedCow._id, { session });
-                    await User.findByIdAndUpdate(farmer._id, { $pull: { cows: savedCow._id } }, { session });
-                });
-                session.endSession();
+                try {
+                    await session.withTransaction(async () => {
+                        await Cattle.findByIdAndDelete(savedCow._id, { session });
+                        await User.findByIdAndUpdate(farmer._id, { $pull: { cows: savedCow._id } }, { session });
+                    });
+                } finally {
+                    await session.endSession();
+                }
             }
             for (const fileUrl of uploadedFiles) {
                 await deleteFromCloudinary(fileUrl).catch(() => { });
@@ -348,13 +357,16 @@ export const deleteCattle = async (req: Request, res: Response) => {
         }
         const session = await mongoose.startSession();
         let deletedCattle: any = null;
-        await session.withTransaction(async () => {
-            deletedCattle = await Cattle.findByIdAndDelete(id, { session });
-            if (deletedCattle && deletedCattle.farmerId) {
-                await User.findByIdAndUpdate(deletedCattle.farmerId, { $pull: { cows: deletedCattle._id } }, { session });
-            }
-        });
-        session.endSession();
+        try {
+            await session.withTransaction(async () => {
+                deletedCattle = await Cattle.findByIdAndDelete(id, { session });
+                if (deletedCattle && deletedCattle.farmerId) {
+                    await User.findByIdAndUpdate(deletedCattle.farmerId, { $pull: { cows: deletedCattle._id } }, { session });
+                }
+            });
+        } finally {
+            await session.endSession();
+        }
 
         if (!deletedCattle) {
             // Idempotent delete: if it's already gone, treat as success

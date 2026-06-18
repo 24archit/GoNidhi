@@ -137,17 +137,16 @@ export const createCattleRegistration = async (req: any, farmerId: string, paylo
             }
         });
 
+        let session;
         try {
             if (req.isAborted) throw new Error('Client Closed Request');
-            const session = await mongoose.startSession();
+            session = await mongoose.startSession();
             await session.withTransaction(async () => {
-                const [savedItems] = await Cattle.create([newCow], { session });
-                savedCow = savedItems;
+                savedCow = await newCow.save({ session });
                 await User.findByIdAndUpdate(farmerId, {
                     $push: { cows: savedCow._id }
                 }, { session });
             });
-            session.endSession();
         } catch (dbError: any) {
             logger.error(dbError, 'Error saving to MongoDB, rolling back:');
             if (dbError.code === 11000) {
@@ -162,9 +161,18 @@ export const createCattleRegistration = async (req: any, farmerId: string, paylo
                     throw err;
                 }
             }
+            if (dbError.name === 'ValidationError') {
+                const err = new Error(`Validation Error: ${dbError.message}`);
+                (err as any).statusCode = 400;
+                throw err;
+            }
             const err = new Error('Database error during registration. Please try again.');
             (err as any).statusCode = 500;
             throw err;
+        } finally {
+            if (session) {
+                await session.endSession();
+            }
         }
 
         // Send Job to DL-API REST Endpoint
@@ -191,11 +199,14 @@ export const createCattleRegistration = async (req: any, farmerId: string, paylo
         try {
             if (savedCow) {
                 const session = await mongoose.startSession();
-                await session.withTransaction(async () => {
-                    await Cattle.findByIdAndDelete(savedCow._id, { session });
-                    await User.findByIdAndUpdate(farmerId, { $pull: { cows: savedCow._id } }, { session });
-                });
-                session.endSession();
+                try {
+                    await session.withTransaction(async () => {
+                        await Cattle.findByIdAndDelete(savedCow._id, { session });
+                        await User.findByIdAndUpdate(farmerId, { $pull: { cows: savedCow._id } }, { session });
+                    });
+                } finally {
+                    await session.endSession();
+                }
             }
         } catch (rollbackErr) {
             logger.error(rollbackErr, 'Error executing DB rollback:');

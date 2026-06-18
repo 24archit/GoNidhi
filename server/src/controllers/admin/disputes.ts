@@ -55,34 +55,37 @@ export const resolveDispute = async (req: Request, res: Response) => {
 
         const session = await mongoose.startSession();
         let updatedDispute: any = null;
-        await session.withTransaction(async () => {
-            // Atomically check and lock the dispute to prevent concurrent resolution races
-            updatedDispute = await Dispute.findOneAndUpdate(
-                { _id: id, status: 'pending' },
-                { $set: { status: resolutionStatus } },
-                { new: true, session }
-            );
+        try {
+            await session.withTransaction(async () => {
+                // Atomically check and lock the dispute to prevent concurrent resolution races
+                updatedDispute = await Dispute.findOneAndUpdate(
+                    { _id: id, status: 'pending' },
+                    { $set: { status: resolutionStatus } },
+                    { new: true, session }
+                );
 
-            if (!updatedDispute) {
-                return; // Dispute was already resolved or doesn't exist
-            }
-
-            if (resolutionStatus === 'resolved' && assignedFarmerId && updatedDispute.cattleId) {
-                const cow = await Cattle.findById(updatedDispute.cattleId).session(session);
-                if (cow && cow.farmerId && cow.farmerId.toString() !== assignedFarmerId.toString()) {
-                    await User.findByIdAndUpdate(cow.farmerId, { $pull: { cows: updatedDispute.cattleId } }, { session });
-                    await User.findByIdAndUpdate(assignedFarmerId, { $push: { cows: updatedDispute.cattleId } }, { session });
-                } else if (cow && !cow.farmerId) {
-                    await User.findByIdAndUpdate(assignedFarmerId, { $push: { cows: updatedDispute.cattleId } }, { session });
+                if (!updatedDispute) {
+                    return; // Dispute was already resolved or doesn't exist
                 }
-                
-                await Cattle.findByIdAndUpdate(updatedDispute.cattleId, {
-                    farmerId: assignedFarmerId,
-                    isDispute: false
-                }, { session });
-            }
-        });
-        session.endSession();
+
+                if (resolutionStatus === 'resolved' && assignedFarmerId && updatedDispute.cattleId) {
+                    const cow = await Cattle.findById(updatedDispute.cattleId).session(session);
+                    if (cow && cow.farmerId && cow.farmerId.toString() !== assignedFarmerId.toString()) {
+                        await User.findByIdAndUpdate(cow.farmerId, { $pull: { cows: updatedDispute.cattleId } }, { session });
+                        await User.findByIdAndUpdate(assignedFarmerId, { $push: { cows: updatedDispute.cattleId } }, { session });
+                    } else if (cow && !cow.farmerId) {
+                        await User.findByIdAndUpdate(assignedFarmerId, { $push: { cows: updatedDispute.cattleId } }, { session });
+                    }
+                    
+                    await Cattle.findByIdAndUpdate(updatedDispute.cattleId, {
+                        farmerId: assignedFarmerId,
+                        isDispute: false
+                    }, { session });
+                }
+            });
+        } finally {
+            await session.endSession();
+        }
 
         if (!updatedDispute) {
             return res.status(400).json({ success: false, message: 'Dispute is already resolved or does not exist.' });

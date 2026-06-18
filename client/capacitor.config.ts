@@ -4,10 +4,10 @@ const config: CapacitorConfig = {
   appId: 'com.ocac.gonidhi',
   appName: 'GoNidhi',
   webDir: 'dist',
-  server: {
-    url: 'http://localhost:5173',
-    cleartext: true
-  }
+  // server: {
+  //   url: 'http://localhost:5173',
+  //   cleartext: true
+  // }
 };
 
 export default config;

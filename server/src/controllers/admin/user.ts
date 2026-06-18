@@ -114,14 +114,17 @@ export const deleteFarmer = async (req: Request, res: Response) => {
         let deletedFarmer: any = null;
         let farmersCattle: any[] = [];
         
-        await session.withTransaction(async () => {
-            deletedFarmer = await User.findOneAndDelete({ _id: id, role: 'farmer' }, { session });
-            if (deletedFarmer) {
-                farmersCattle = await Cattle.find({ farmerId: id }).session(session);
-                await Cattle.deleteMany({ farmerId: id }, { session });
-            }
-        });
-        session.endSession();
+        try {
+            await session.withTransaction(async () => {
+                deletedFarmer = await User.findOneAndDelete({ _id: id, role: 'farmer' }, { session });
+                if (deletedFarmer) {
+                    farmersCattle = await Cattle.find({ farmerId: id }).session(session);
+                    await Cattle.deleteMany({ farmerId: id }, { session });
+                }
+            });
+        } finally {
+            await session.endSession();
+        }
 
         if (!deletedFarmer) {
             return res.status(404).json({ success: false, message: 'Farmer not found' });

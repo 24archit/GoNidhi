@@ -183,10 +183,13 @@ export const getCowProfile = asyncHandler(async (req: Request, res: Response) =>
                     cleanupCowCloudResources(deletedCow);
 
                     const session = await mongoose.startSession();
-                    await session.withTransaction(async () => {
-                        await User.findByIdAndUpdate(authReq.user.id, { $pull: { cows: cow._id } }, { session });
-                    });
-                    session.endSession();
+                    try {
+                        await session.withTransaction(async () => {
+                            await User.findByIdAndUpdate(authReq.user.id, { $pull: { cows: cow._id } }, { session });
+                        });
+                    } finally {
+                        await session.endSession();
+                    }
                 }
 
                 return res.status(400).json({
@@ -318,11 +321,14 @@ export async function processDlApiResult(payload: any) {
     try {
         if (status === 'DUPLICATE') {
             const session = await mongoose.startSession();
-            await session.withTransaction(async () => {
-                await Cattle.findByIdAndDelete(cow_id, { session });
-                await User.findByIdAndUpdate(farmer_id, { $pull: { cows: cow_id } }, { session });
-            });
-            session.endSession();
+            try {
+                await session.withTransaction(async () => {
+                    await Cattle.findByIdAndDelete(cow_id, { session });
+                    await User.findByIdAndUpdate(farmer_id, { $pull: { cows: cow_id } }, { session });
+                });
+            } finally {
+                await session.endSession();
+            }
             recentRejections.set(cow_id, { status, message: error_message } as any);
             setTimeout(() => recentRejections.delete(cow_id), REJECTION_TTL_MS);
 
@@ -342,22 +348,25 @@ export async function processDlApiResult(payload: any) {
             }
 
             const session = await mongoose.startSession();
-            await session.withTransaction(async () => {
-                await cow.save({ session });
-                if (matched_cow_id) {
-                    await Cattle.findByIdAndUpdate(matched_cow_id, { isDispute: true }, { session });
-                }
-                if (originalFarmerId) {
-                    await Dispute.create([{
-                        cattleId: cow_id,
-                        originalFarmerId: originalFarmerId,
-                        attemptingFarmerId: farmer_id,
-                        status: 'pending',
-                        reason: error_message || 'Duplicate Registration Attempt Detected via AI Biometrics'
-                    }], { session });
-                }
-            });
-            session.endSession();
+            try {
+                await session.withTransaction(async () => {
+                    await cow.save({ session });
+                    if (matched_cow_id) {
+                        await Cattle.findByIdAndUpdate(matched_cow_id, { isDispute: true }, { session });
+                    }
+                    if (originalFarmerId) {
+                        await Dispute.create([{
+                            cattleId: cow_id,
+                            originalFarmerId: originalFarmerId,
+                            attemptingFarmerId: farmer_id,
+                            status: 'pending',
+                            reason: error_message || 'Duplicate Registration Attempt Detected via AI Biometrics'
+                        }], { session });
+                    }
+                });
+            } finally {
+                await session.endSession();
+            }
 
             logger.info(`[Sync] Dispute marked for cow_id: ${cow_id} and matched_cow_id: ${matched_cow_id}`);
         } else if (status === 'SUCCESS') {
@@ -367,11 +376,14 @@ export async function processDlApiResult(payload: any) {
             logger.info(`[Sync] Successfully registered cow_id: ${cow_id}`);
         } else {
             const session = await mongoose.startSession();
-            await session.withTransaction(async () => {
-                await Cattle.findByIdAndDelete(cow_id, { session });
-                await User.findByIdAndUpdate(farmer_id, { $pull: { cows: cow_id } }, { session });
-            });
-            session.endSession();
+            try {
+                await session.withTransaction(async () => {
+                    await Cattle.findByIdAndDelete(cow_id, { session });
+                    await User.findByIdAndUpdate(farmer_id, { $pull: { cows: cow_id } }, { session });
+                });
+            } finally {
+                await session.endSession();
+            }
             recentRejections.set(cow_id, { status, message: error_message } as any);
             setTimeout(() => recentRejections.delete(cow_id), REJECTION_TTL_MS);
 
