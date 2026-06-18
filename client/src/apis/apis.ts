@@ -6,7 +6,7 @@ import { Preferences } from '@capacitor/preferences';
  * Register a new farmer and save the JWT token
 //  */
 import { API_BASE } from '@gonidhi/shared';
-export const registerFarmerAPI = async (formData: { name: string; phone: string; village: string; state: string; district: string; pincode?: string }) => {
+export const registerFarmerAPI = async (formData: { name: string; phone: string; village: string; state: string; district: string; pincode?: string; password?: string }) => {
     try {
         const response = await axios.post(`${API_BASE}/api/farmer/auth/register`, formData);
 
@@ -205,9 +205,9 @@ export const registerCowAPI = async (cowData: Record<string, any>, signal?: Abor
 /**
  * Login an existing farmer and save the JWT token
  */
-export const loginFarmerAPI = async (phone: string) => {
+export const loginFarmerAPI = async (phone: string, password?: string) => {
     try {
-        const response = await axios.post(`${API_BASE}/api/farmer/auth/login`, { phone });
+        const response = await axios.post(`${API_BASE}/api/farmer/auth/login`, { phone, password });
 
         const data = response.data;
 

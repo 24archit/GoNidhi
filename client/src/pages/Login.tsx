@@ -7,9 +7,13 @@ import {
     Button,
     CircularProgress,
     Alert,
+    IconButton,
+    InputAdornment
 } from '@mui/material';
+import { Visibility, VisibilityOff } from '@mui/icons-material';
 import { loginFarmerAPI } from '../apis/apis';
 import { useNavigate } from 'react-router-dom';
+import { loginSchema } from '@gonidhi/shared';
 
 import BrandingFooter from '../components/BrandingFooter';
 
@@ -17,10 +21,12 @@ const Login: React.FC = () => {
     const navigate = useNavigate();
     const [formData, setFormData] = useState({
         phone: '',
+        password: '',
     });
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [showPassword, setShowPassword] = useState(false);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -30,10 +36,17 @@ const Login: React.FC = () => {
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
+
+        const result = loginSchema.safeParse(formData);
+        if (!result.success) {
+            setError(result.error.issues[0].message);
+            return;
+        }
+
         setLoading(true);
 
         try {
-            await loginFarmerAPI(formData.phone);
+            await loginFarmerAPI(formData.phone, formData.password);
 
             // Notify App.tsx to re-evaluate local preferences and auth token
             window.dispatchEvent(new Event('auth-change'));
@@ -51,8 +64,11 @@ const Login: React.FC = () => {
             <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                 <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 3 }}>
                     <img src="/logo.png" alt="GoNidhi Logo" style={{ width: '80px', height: '80px', objectFit: 'contain' }} />
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'primary.main', letterSpacing: 1, mt: 1, textTransform: 'uppercase' }}>
-                        Govt. of Odisha
+                    <Typography variant="h4" sx={{ fontWeight: 800, color: 'primary.main', mt: 1 }}>
+                        GoNidhi
+                    </Typography>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', letterSpacing: 1, textTransform: 'uppercase' }}>
+                        Government of Odisha
                     </Typography>
                 </Box>
                 <Typography variant="h5" fontWeight="bold" gutterBottom textAlign="center">
@@ -74,6 +90,28 @@ const Login: React.FC = () => {
                         value={formData.phone}
                         onChange={handleChange}
                         required
+                        slotProps={{ htmlInput: { maxLength: 10 } }}
+                    />
+                    <TextField
+                        label="Password"
+                        name="password"
+                        type={showPassword ? "text" : "password"}
+                        variant="outlined"
+                        fullWidth
+                        value={formData.password}
+                        onChange={handleChange}
+                        required
+                        slotProps={{
+                            input: {
+                                endAdornment: (
+                                    <InputAdornment position="end">
+                                        <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
+                                            {showPassword ? <VisibilityOff /> : <Visibility />}
+                                        </IconButton>
+                                    </InputAdornment>
+                                )
+                            }
+                        }}
                     />
                     <Button
                         type="submit"

@@ -38,7 +38,13 @@ const UserSchema = new Schema<IUser>({
         email: { type: String }
     },
     auth: {
-        password: { type: String, select: false },
+        password: {
+            type: String,
+            select: false,
+            required: function(this: any) {
+                return this.role === 'farmer' || this.role === 'admin';
+            }
+        },
         otpSession: { type: String, select: false }
     },
     location: {

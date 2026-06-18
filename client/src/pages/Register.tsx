@@ -8,9 +8,13 @@ import {
     CircularProgress,
     Alert,
     MenuItem,
+    IconButton,
+    InputAdornment
 } from '@mui/material';
+import { Visibility, VisibilityOff } from '@mui/icons-material';
 import { registerFarmerAPI, getStatesAPI, getDistrictsAPI, getBlocksAPI, getVillagesAPI } from '../apis/apis';
 import { useNavigate } from 'react-router-dom';
+import { farmerRegisterFrontendSchema } from '@gonidhi/shared';
 
 import BrandingFooter from '../components/BrandingFooter';
 
@@ -23,6 +27,8 @@ const Register: React.FC = () => {
         district: '',
         block: '',
         village: '',
+        password: '',
+        confirmPassword: '',
     });
 
     const [states, setStates] = useState<string[]>([]);
@@ -32,6 +38,8 @@ const Register: React.FC = () => {
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
     useEffect(() => {
         // Fetch states on mount
@@ -94,6 +102,13 @@ const Register: React.FC = () => {
     const handleRegister = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
+
+        const result = farmerRegisterFrontendSchema.safeParse(formData);
+        if (!result.success) {
+            setError(result.error.issues[0].message);
+            return;
+        }
+
         setLoading(true);
 
         try {
@@ -115,8 +130,11 @@ const Register: React.FC = () => {
             <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                 <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 3 }}>
                     <img src="/logo.png" alt="GoNidhi Logo" style={{ width: '80px', height: '80px', objectFit: 'contain' }} />
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'primary.main', letterSpacing: 1, mt: 1, textTransform: 'uppercase' }}>
-                        Govt. of Odisha
+                    <Typography variant="h4" sx={{ fontWeight: 800, color: 'primary.main', mt: 1 }}>
+                        GoNidhi
+                    </Typography>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', letterSpacing: 1, textTransform: 'uppercase' }}>
+                        Government of Odisha
                     </Typography>
                 </Box>
                 <Typography variant="h5" fontWeight="bold" gutterBottom textAlign="center">
@@ -137,6 +155,7 @@ const Register: React.FC = () => {
                         value={formData.name}
                         onChange={handleChange}
                         required
+                        slotProps={{ htmlInput: { maxLength: 50 } }}
                     />
                     <TextField
                         label="Phone Number"
@@ -147,6 +166,49 @@ const Register: React.FC = () => {
                         value={formData.phone}
                         onChange={handleChange}
                         required
+                        slotProps={{ htmlInput: { maxLength: 10 } }}
+                    />
+                    <TextField
+                        label="Password"
+                        name="password"
+                        type={showPassword ? "text" : "password"}
+                        variant="outlined"
+                        fullWidth
+                        value={formData.password}
+                        onChange={handleChange}
+                        required
+                        slotProps={{
+                            input: {
+                                endAdornment: (
+                                    <InputAdornment position="end">
+                                        <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
+                                            {showPassword ? <VisibilityOff /> : <Visibility />}
+                                        </IconButton>
+                                    </InputAdornment>
+                                )
+                            }
+                        }}
+                    />
+                    <TextField
+                        label="Confirm Password"
+                        name="confirmPassword"
+                        type={showConfirmPassword ? "text" : "password"}
+                        variant="outlined"
+                        fullWidth
+                        value={formData.confirmPassword}
+                        onChange={handleChange}
+                        required
+                        slotProps={{
+                            input: {
+                                endAdornment: (
+                                    <InputAdornment position="end">
+                                        <IconButton onClick={() => setShowConfirmPassword(!showConfirmPassword)} edge="end">
+                                            {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
+                                        </IconButton>
+                                    </InputAdornment>
+                                )
+                            }
+                        }}
                     />
 
                     <TextField

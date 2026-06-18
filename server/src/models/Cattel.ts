@@ -9,7 +9,7 @@ export interface ICattle extends Document {
     species: 'Cow' | 'Buffalo';
     breed: string;
     sex: 'Male' | 'Female' | 'Freemartin';
-    dob: Date;
+    ageYears?: number;
     ageMonths?: number;
 
     // Lineage & Source
@@ -42,18 +42,17 @@ export interface ICattle extends Document {
         lastScannedAt?: Date;
     };
     superpointCache?: any;
+    isInformationCorrectAgreement: boolean;
 
     // Health Status
     currentStatus: 'Milking' | 'Dry' | 'Pregnant' | 'Heifer' | 'Calf';
-    lastWeight?: number;
     isSick: boolean;
     isDispute: boolean;
     healthStats?: {
         birthWeight?: number;
         motherWeightAtCalving?: number;
-        growthStatus?: string;
         healthStatus?: string;
-        bodyConditionScore?: number;
+        calvingCounter?: number;
     };
 }
 
@@ -62,15 +61,15 @@ const CattleSchema = new Schema<ICattle>({
 
     tagNumber: { type: String, unique: true, sparse: true },
     name: { type: String },
-    species: { type: String, enum: ['Cow', 'Buffalo'] },
+    species: { type: String, enum: ['Cow', 'Buffalo'], required: true },
     breed: { type: String },
-    sex: { type: String, enum: ['Male', 'Female', 'Freemartin'] },
-    dob: { type: Date },
+    sex: { type: String, enum: ['Male', 'Female', 'Freemartin'], required: true },
+    ageYears: { type: Number },
     ageMonths: { type: Number },
 
     sireTag: { type: String, default: null },
     damTag: { type: String, default: null },
-    source: { type: String, enum: ['Home Born', 'Purchase'] },
+    source: { type: String, enum: ['Home Born', 'Purchase'], required: true },
     purchaseDetails: {
         date: { type: Date },
         price: { type: Number }
@@ -97,21 +96,20 @@ const CattleSchema = new Schema<ICattle>({
         lastScannedAt: Date
     },
     superpointCache: { type: Schema.Types.Mixed },
+    isInformationCorrectAgreement: { type: Boolean, required: true },
 
     currentStatus: {
         type: String,
         enum: ['Milking', 'Dry', 'Pregnant', 'Heifer', 'Calf'],
         default: 'Calf'
     },
-    lastWeight: Number,
     isSick: { type: Boolean, default: false },
     isDispute: { type: Boolean, default: false },
     healthStats: {
         birthWeight: Number,
         motherWeightAtCalving: Number,
-        growthStatus: String,
         healthStatus: String,
-        bodyConditionScore: Number
+        calvingCounter: Number
     }
 }, { timestamps: true });
 

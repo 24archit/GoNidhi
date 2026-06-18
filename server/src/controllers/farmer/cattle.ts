@@ -28,6 +28,10 @@ export const registerCow = asyncHandler(async (req: Request, res: Response) => {
     const farmerId = authReq.user.id;
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
 
+    if (String(authReq.body.isInformationCorrectAgreement) !== 'true') {
+        return res.status(400).json({ success: false, message: 'You must agree that the information is true and correct.' });
+    }
+
     const savedCow = await createCattleRegistration(req, farmerId, authReq.body, files);
 
     res.status(202).json({

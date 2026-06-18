@@ -4,7 +4,7 @@ import { Close, FlashOn, FlashOff, CheckCircle, Cameraswitch } from '@mui/icons-
 import * as tf from '@tensorflow/tfjs';
 import '@tensorflow/tfjs-backend-webgl';
 
-import { getMuzzleModel, getNimaModel } from '../utils/MuzzleModelService';
+import { getMuzzleModel, getNimaModel, isModelsCached } from '../utils/MuzzleModelService';
 import { useCamera } from '../hooks/useCamera';
 
 import type { CameraGuidanceType, QualityReport, DetectionResult, Phase } from './camera/types';
@@ -72,14 +72,16 @@ export const HTML5CameraDialog: React.FC<HTML5CameraDialogProps> = ({ open, onCl
                 return;
             }
 
-            // Give the browser 1000ms to smoothly begin rendering the camera stream 
-            // before we hammer the GPU with tensor shader compilations!
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // Give the browser 600ms to smoothly begin rendering the camera stream 
+            // before we await the background models to prevent UI stuttering.
+            await new Promise(resolve => setTimeout(resolve, 600));
 
             try {
                 // Ensure TensorFlow backend is fully initialized before loading weights
                 await tf.ready();
 
+                // If the user rushed here, this will elegantly await the background promises 
+                // started by the page mount without any arbitrary penalty delays!
                 const [nima, muzzle] = await Promise.all([
                     getNimaModel(),
                     isAIScan ? getMuzzleModel() : Promise.resolve(null)
@@ -88,9 +90,6 @@ export const HTML5CameraDialog: React.FC<HTML5CameraDialogProps> = ({ open, onCl
                 if (mounted) {
                     nimaModelRef.current = nima;
                     muzzleModelRef.current = muzzle;
-
-                    // Substantial stabilization delay allowing VRAM to perfectly lock model weights
-                    await new Promise(resolve => setTimeout(resolve, 3000));
                     setModelsLoaded(true);
                 }
             } catch (error) {
@@ -121,13 +120,14 @@ export const HTML5CameraDialog: React.FC<HTML5CameraDialogProps> = ({ open, onCl
         setFlash(false);
     }, []);
 
-    const startPreviewInHost = useCallback(async () => {
+    const startPreviewInHost = useCallback(async (position?: 'rear' | 'front') => {
         await startPreview({
             parent: 'camera-preview-host',
             x: 0,
             y: 0,
             width: window.screen.width,
             height: window.screen.height,
+            ...(position ? { position } : {}),
         });
     }, [startPreview]);
 
@@ -203,19 +203,29 @@ export const HTML5CameraDialog: React.FC<HTML5CameraDialogProps> = ({ open, onCl
             img.src = imgUrl;
             await loaded;
 
+            const w = img.width;
+            const h = img.height;
+            const size = Math.min(w, h);
+            const startY = Math.floor((h - size) / 2);
+            const startX = Math.floor((w - size) / 2);
+
+            // Hardware accelerated off-screen canvas downscaling (95% VRAM savings)
+            const canvas = document.createElement('canvas');
+            canvas.width = FRAME_W;
+            canvas.height = FRAME_H;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) throw new Error('No 2d context');
+
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+
+            // Draw center square crop directly into the tiny 320x320 canvas
+            ctx.drawImage(img, startX, startY, size, size, 0, 0, FRAME_W, FRAME_H);
+
             inputTensor = tf.tidy(() => {
-                const rawImg = tf.browser.fromPixels(img);
-
-                const w = img.width;
-                const h = img.height;
-                const size = Math.min(w, h);
-                const startY = Math.floor((h - size) / 2);
-                const startX = Math.floor((w - size) / 2);
-
-                const cropped = tf.slice(rawImg, [startY, startX, 0], [size, size, 3]);
-                const resized = tf.image.resizeBilinear(cropped, [FRAME_H, FRAME_W]);
-
-                return resized.cast('float32').div(255).expandDims(0);
+                // TensorFlow now reads a 300KB canvas instead of a 6MB raw image
+                const rawImg = tf.browser.fromPixels(canvas);
+                return rawImg.cast('float32').div(255).expandDims(0);
             });
 
             output = await muzzleModelRef.current.executeAsync(inputTensor);
@@ -248,19 +258,29 @@ export const HTML5CameraDialog: React.FC<HTML5CameraDialogProps> = ({ open, onCl
             img.src = imgUrl;
             await loaded;
 
+            const w = img.width;
+            const h = img.height;
+            const size = Math.min(w, h);
+            const startY = Math.floor((h - size) / 2);
+            const startX = Math.floor((w - size) / 2);
+
+            // Hardware accelerated off-screen canvas downscaling
+            const canvas = document.createElement('canvas');
+            canvas.width = 224;
+            canvas.height = 224;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) throw new Error('No 2d context');
+
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+
+            // Draw center square crop directly into the tiny 224x224 canvas
+            ctx.drawImage(img, startX, startY, size, size, 0, 0, 224, 224);
+
             inputTensor = tf.tidy(() => {
-                const rawImg = tf.browser.fromPixels(img);
-
-                const w = img.width;
-                const h = img.height;
-                const size = Math.min(w, h);
-                const startY = Math.floor((h - size) / 2);
-                const startX = Math.floor((w - size) / 2);
-
-                const cropped = tf.slice(rawImg, [startY, startX, 0], [size, size, 3]);
-                const resized = tf.image.resizeBilinear(cropped, [224, 224]);
-
-                return resized.cast('float32').div(255).expandDims(0);
+                // TensorFlow now reads a 150KB canvas instead of a 6MB raw image
+                const rawImg = tf.browser.fromPixels(canvas);
+                return rawImg.cast('float32').div(255).expandDims(0);
             });
 
             predictions = nimaModelRef.current.predict(inputTensor) as tf.Tensor;
@@ -328,7 +348,10 @@ export const HTML5CameraDialog: React.FC<HTML5CameraDialogProps> = ({ open, onCl
         let bestNimaScore = -Infinity;
         let finalQualityReport: QualityReport | null = null;
 
-        for (let index = 0; index < frames.length; index += 1) {
+        // Start a massive global GC scope for all tensor operations to guarantee prolonged app health
+        tf.engine().startScope();
+        try {
+            for (let index = 0; index < frames.length; index += 1) {
             const frame = frames[index];
 
             if (isAIScan) {
@@ -374,6 +397,10 @@ export const HTML5CameraDialog: React.FC<HTML5CameraDialogProps> = ({ open, onCl
 
             // Force the event loop to idle, triggering V8 Garbage Collection for the previous frame's massive blob strings!
             await new Promise(resolve => setTimeout(resolve, 60));
+        }
+        } finally {
+            // End scope to physically wipe any hanging intermediate tensors from GPU VRAM
+            tf.engine().endScope();
         }
 
         if (isAIScan && bestNimaScore === -Infinity) {
@@ -611,12 +638,12 @@ export const HTML5CameraDialog: React.FC<HTML5CameraDialogProps> = ({ open, onCl
 
                             <Box sx={{ display: 'flex', gap: 1 }}>
                                 <IconButton
-                                    onClick={() => {
-                                        setFlash(current => {
-                                            const next = !current;
-                                            void toggleFlash(next);
-                                            return next;
-                                        });
+                                    onClick={async () => {
+                                        const next = !flash;
+                                        const success = await toggleFlash(next);
+                                        if (success) {
+                                            setFlash(next);
+                                        }
                                     }}
                                     sx={{
                                         color: flash ? '#FCD34D' : 'white',
@@ -629,7 +656,11 @@ export const HTML5CameraDialog: React.FC<HTML5CameraDialogProps> = ({ open, onCl
                                     {flash ? <FlashOn /> : <FlashOff />}
                                 </IconButton>
                                 <IconButton
-                                    onClick={() => void flipCamera()}
+                                    onClick={async () => {
+                                        const newPosition = cameraState.position === 'rear' ? 'front' : 'rear';
+                                        await flipCamera(() => startPreviewInHost(newPosition));
+                                        setFlash(false);
+                                    }}
                                     sx={{
                                         color: 'white',
                                         bgcolor: 'rgba(0,0,0,0.3)',

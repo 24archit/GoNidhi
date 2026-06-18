@@ -10,6 +10,11 @@ let loadPromise: Promise<tf.GraphModel> | null = null;
 let cachedNimaModel: tf.GraphModel | null = null;
 let nimaLoadPromise: Promise<tf.GraphModel> | null = null;
 
+export const isModelsCached = (requiresMuzzle: boolean): boolean => {
+    if (requiresMuzzle) return cachedModel !== null && cachedNimaModel !== null;
+    return cachedNimaModel !== null;
+};
+
 export const preloadMuzzleModel = (): Promise<tf.GraphModel> => {
     // If already loading or loaded, return the existing promise
     if (loadPromise) return loadPromise;
@@ -76,4 +81,26 @@ export const preloadNimaModel = (): Promise<tf.GraphModel> => {
 export const getNimaModel = async (): Promise<tf.GraphModel> => {
     if (cachedNimaModel) return cachedNimaModel;
     return preloadNimaModel();
+};
+
+/**
+ * Explicitly disposes of loaded models to free up GPU and RAM memory.
+ * This should be called when exiting the camera or registration flows.
+ */
+export const disposeModels = () => {
+    try {
+        if (cachedModel) {
+            cachedModel.dispose();
+            cachedModel = null;
+        }
+        if (cachedNimaModel) {
+            cachedNimaModel.dispose();
+            cachedNimaModel = null;
+        }
+        loadPromise = null;
+        nimaLoadPromise = null;
+        console.log('🧹 AI Models disposed and RAM/VRAM freed.');
+    } catch (e) {
+        console.error('❌ Error while disposing AI models:', e);
+    }
 };

@@ -3,16 +3,17 @@ import { User } from '../../models/User';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import logger from '../../utils/logger';
+import { adminRegisterBackendSchema, loginSchema } from '../../schemas/auth';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
 export const loginAdmin = async (req: Request, res: Response) => {
     try {
-        const { phone, password } = req.body;
-
-        if (!phone) {
-            return res.status(400).json({ success: false, message: 'Phone number is required' });
+        const parseResult = loginSchema.safeParse(req.body);
+        if (!parseResult.success) {
+            return res.status(400).json({ success: false, message: parseResult.error.issues[0].message });
         }
+        const { phone, password } = parseResult.data;
 
         const user = await User.findOne({ 'contact.phone': phone, role: 'admin' }).select('+auth.password');
 
@@ -50,11 +51,11 @@ export const loginAdmin = async (req: Request, res: Response) => {
 
 export const registerAdmin = async (req: Request, res: Response) => {
     try {
-        const { name, phone, password, district } = req.body;
-
-        if (!name || !phone || !password || !district) {
-            return res.status(400).json({ success: false, message: 'Name, phone, password, and district are required.' });
+        const parseResult = adminRegisterBackendSchema.safeParse(req.body);
+        if (!parseResult.success) {
+            return res.status(400).json({ success: false, message: parseResult.error.issues[0].message });
         }
+        const { name, phone, password, district } = parseResult.data;
 
         const existingUser = await User.findOne({ 'contact.phone': phone });
         if (existingUser) {

@@ -35,7 +35,7 @@ const Onboarding: React.FC = () => {
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 2 }}>
                 <img src="/logo.png" alt="GoNidhi Logo" style={{ width: '80px', height: '80px', objectFit: 'contain' }} />
                 <Typography variant="caption" sx={{ fontWeight: 600, color: 'primary.main', letterSpacing: 1, mt: 1, textTransform: 'uppercase' }}>
-                    Govt. of Odisha
+                    Government of Odisha
                 </Typography>
             </Box>
 

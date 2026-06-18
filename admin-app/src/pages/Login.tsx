@@ -16,7 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import BrandingFooter from '../components/BrandingFooter';
 
-import { API_BASE } from '@gonidhi/shared';
+import { API_BASE, loginSchema } from '@gonidhi/shared';
 
 const Login: React.FC = () => {
     const navigate = useNavigate();
@@ -39,6 +39,13 @@ const Login: React.FC = () => {
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
+
+        const result = loginSchema.safeParse(formData);
+        if (!result.success) {
+            setError(result.error.issues[0].message);
+            return;
+        }
+
         setLoading(true);
 
         try {
@@ -61,8 +68,11 @@ const Login: React.FC = () => {
             <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                 <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 3 }}>
                     <img src="/logo.png" alt="GoNidhi" style={{ width: '80px', height: '80px', objectFit: 'contain' }} />
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'primary.main', letterSpacing: 1, mt: 1, textTransform: 'uppercase' }}>
-                        Govt. of Odisha
+                    <Typography variant="h4" sx={{ fontWeight: 800, color: 'primary.main', mt: 1 }}>
+                        GoNidhi
+                    </Typography>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', letterSpacing: 1, textTransform: 'uppercase' }}>
+                        Government of Odisha
                     </Typography>
                 </Box>
                 <Typography variant="h5" sx={{ fontWeight: 'bold', textAlign: 'center', mb: 1 }}>
@@ -84,6 +94,7 @@ const Login: React.FC = () => {
                         value={formData.phone}
                         onChange={handleChange}
                         required
+                        slotProps={{ htmlInput: { maxLength: 10 } }}
                     />
                     <TextField
                         label="Password"

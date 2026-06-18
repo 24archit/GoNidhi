@@ -18,14 +18,13 @@ interface CowProfileData {
     tagNumber?: string;
     species?: string;
     sex?: string;
-    dob?: string;
+    ageYears?: number;
     ageMonths?: number;
     source?: string;
     sireTag?: string;
     damTag?: string;
     currentStatus?: string;
     isDispute?: boolean;
-    lastWeight?: number;
     photos?: {
         faceProfile?: string;
         muzzle?: string;
@@ -38,8 +37,8 @@ interface CowProfileData {
     healthStats?: {
         birthWeight?: number;
         motherWeightAtCalving?: number;
-        growthStatus?: string;
-        bodyConditionScore?: number;
+        healthStatus?: string;
+        calvingCounter?: number;
     };
 }
 import { useNavigate, useParams } from 'react-router-dom';
@@ -214,7 +213,7 @@ const CowProfile: React.FC = () => {
                                         />
                                     )}
                                     <Chip label={cowData?.currentStatus || 'Unknown'} color="success" size="small" icon={<WaterDrop />} />
-                                    <Chip label={cowData?.healthStats?.growthStatus || 'Tracking'} variant="outlined" size="small" color="info" />
+                                    <Chip label={cowData?.healthStats?.healthStatus || 'Tracking'} variant="outlined" size="small" color="info" />
                                 </Stack>
 
                                 {/* SECTION 1: GENERAL / OWNER */}
@@ -247,7 +246,7 @@ const CowProfile: React.FC = () => {
                                     </ListItem>
                                     <ListItem disablePadding sx={{ mb: 1 }}>
                                         <ListItemAvatar><Avatar sx={{ bgcolor: 'secondary.light', color: 'secondary.main' }}><Cake /></Avatar></ListItemAvatar>
-                                        <ListItemText primary="DOB & Age" secondary={`${cowData?.dob ? new Date(cowData.dob).toLocaleDateString() : 'Unknown'} (${cowData?.ageMonths ? `${cowData.ageMonths}m` : 'Unknown'})`} />
+                                        <ListItemText primary="Age" secondary={`${cowData?.ageYears ? `${cowData.ageYears}y ` : ''}${cowData?.ageMonths ? `${cowData.ageMonths}m` : 'Unknown'}`} />
                                     </ListItem>
                                 </List>
 
@@ -269,7 +268,10 @@ const CowProfile: React.FC = () => {
                                     </ListItem>
                                     <ListItem disablePadding sx={{ mb: 1 }}>
                                         <ListItemAvatar><Avatar sx={{ bgcolor: 'primary.light', color: 'primary.main' }}><MonitorWeight /></Avatar></ListItemAvatar>
-                                        <ListItemText primary="Current Stats" secondary={`Weight: ${cowData?.lastWeight || '--'}kg | BCS: ${cowData?.healthStats?.bodyConditionScore || '--'}`} />
+                                        <ListItemText 
+                                            primary="Current Stats" 
+                                            secondary={`Reproduction: ${cowData?.sex === 'Female' ? cowData.currentStatus : 'N/A'}${cowData?.healthStats?.calvingCounter ? ` | Calvings: ${cowData.healthStats.calvingCounter}` : ''}`} 
+                                        />
                                     </ListItem>
                                 </List>
 

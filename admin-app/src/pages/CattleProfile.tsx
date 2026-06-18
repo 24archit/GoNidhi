@@ -19,7 +19,7 @@ interface CattleProfileData {
   species?: string;
   breed?: string;
   sex?: string;
-  dob?: string;
+  ageYears?: number;
   ageMonths?: number;
   sireTag?: string;
   damTag?: string;
@@ -27,15 +27,13 @@ interface CattleProfileData {
   purchaseDetails?: { date?: string; price?: number };
   location?: { lat: number; lng: number };
   currentStatus?: string;
-  lastWeight?: number;
   isSick?: boolean;
   isDispute?: boolean;
   healthStats?: {
     birthWeight?: number;
     motherWeightAtCalving?: number;
-    growthStatus?: string;
     healthStatus?: string;
-    bodyConditionScore?: number;
+    calvingCounter?: number;
   };
   createdAt: string | Date;
   updatedAt?: string | Date;
@@ -76,20 +74,18 @@ export default function CattleProfile() {
       tagNumber: cattle?.tagNumber || '',
       breed: cattle?.breed || '',
       sex: cattle?.sex || '',
-      dob: cattle?.dob ? new Date(cattle.dob).toISOString().split('T')[0] : '',
+      ageYears: cattle?.ageYears || '',
       ageMonths: cattle?.ageMonths || '',
       sireTag: cattle?.sireTag || '',
       damTag: cattle?.damTag || '',
       source: cattle?.source || '',
       currentStatus: cattle?.currentStatus || '',
-      lastWeight: cattle?.lastWeight || '',
       isSick: cattle?.isSick || false,
       isDispute: cattle?.isDispute || false,
       healthStats: {
         birthWeight: cattle?.healthStats?.birthWeight || '',
         motherWeightAtCalving: cattle?.healthStats?.motherWeightAtCalving || '',
-        bodyConditionScore: cattle?.healthStats?.bodyConditionScore || '',
-        growthStatus: cattle?.healthStats?.growthStatus || '',
+        calvingCounter: cattle?.healthStats?.calvingCounter || '',
         healthStatus: cattle?.healthStats?.healthStatus || ''
       }
     };
@@ -127,7 +123,7 @@ export default function CattleProfile() {
     setSavingEdit(true);
     try {
       const payload = { ...editData };
-      if (!payload.dob) delete payload.dob;
+      if (!payload.ageYears) delete payload.ageYears;
       if (!payload.ageMonths) delete payload.ageMonths;
 
       const res = await axios.put(`${API_BASE}/api/admin/cattle/${id}`, payload);
@@ -214,17 +210,8 @@ export default function CattleProfile() {
   const photos = Object.entries(cattle.photos || {}).filter(([, url]) => !!url);
 
   // --- Derived Secondary Information ---
-  let exactAge = 'N/A';
-  if (cattle.dob) {
-    const birthDate = new Date(cattle.dob);
-    const now = new Date();
-    let years = now.getFullYear() - birthDate.getFullYear();
-    let months = now.getMonth() - birthDate.getMonth();
-    if (months < 0) {
-      years--;
-      months += 12;
-    }
-    exactAge = `${years} yrs, ${months} mos`;
+  if (cattle.ageYears !== undefined) {
+    exactAge = `${cattle.ageYears} yrs, ${cattle.ageMonths || 0} mos`;
   } else if (cattle.ageMonths !== undefined) {
     exactAge = `${Math.floor(cattle.ageMonths / 12)} yrs, ${cattle.ageMonths % 12} mos`;
   }
@@ -234,12 +221,6 @@ export default function CattleProfile() {
     const pDate = new Date(cattle.purchaseDetails.date);
     const diffTime = Math.abs(new Date().getTime() - pDate.getTime());
     daysSincePurchase = `${Math.floor(diffTime / (1000 * 60 * 60 * 24))} days ago`;
-  }
-
-  let weightGain = 'N/A';
-  if (cattle.lastWeight && cattle.healthStats?.birthWeight) {
-    const gain = cattle.lastWeight - cattle.healthStats.birthWeight;
-    weightGain = `${gain > 0 ? '+' : ''}${gain} kg`;
   }
 
   let birthToMotherRatio = 'N/A';
@@ -375,7 +356,7 @@ export default function CattleProfile() {
                   <CardContent>
                     <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2 }}>Identity & Lineage</Typography>
                     <Divider sx={{ mb: 2 }} />
-                    <Typography variant="body2" sx={{ mb: 1 }}><b>Date of Birth:</b> {cattle.dob ? new Date(cattle.dob).toLocaleDateString() : 'N/A'}</Typography>
+                    <Typography variant="body2" sx={{ mb: 1 }}><b>Age:</b> {exactAge}</Typography>
                     <Typography variant="body2" sx={{ mb: 1 }}><b>Sire Tag:</b> {cattle.sireTag || 'N/A'}</Typography>
                     <Typography variant="body2" sx={{ mb: 1 }}><b>Dam Tag:</b> {cattle.damTag || 'N/A'}</Typography>
                     <Typography variant="body2" sx={{ mb: 1 }}><b>Source:</b> {cattle.source || 'N/A'}</Typography>
@@ -399,23 +380,18 @@ export default function CattleProfile() {
                       <b>Current Status:</b> {cattle.currentStatus || 'N/A'}
                       {cattle.isSick && <Chip label="Sick" color="error" size="small" sx={{ ml: 1, height: 20 }} />}
                     </Typography>
-                    <Typography variant="body2" sx={{ mb: 1 }}><b>Last Weight:</b> {cattle.lastWeight ? `${cattle.lastWeight} kg` : 'N/A'}</Typography>
                     <Typography variant="body2" sx={{ mb: 1 }}><b>Birth Weight:</b> {cattle.healthStats?.birthWeight ? `${cattle.healthStats.birthWeight} kg` : 'N/A'}</Typography>
                     <Typography variant="body2" sx={{ mb: 1 }}><b>Mother Wt at Calving:</b> {cattle.healthStats?.motherWeightAtCalving ? `${cattle.healthStats.motherWeightAtCalving} kg` : 'N/A'}</Typography>
-                    <Typography variant="body2" sx={{ mb: 1 }}><b>Body Condition Score:</b> {cattle.healthStats?.bodyConditionScore || 'N/A'}</Typography>
-                    <Typography variant="body2" sx={{ mb: 1 }}><b>Growth Status:</b> {cattle.healthStats?.growthStatus || 'N/A'}</Typography>
+                    {cattle.sex === 'Female' && ['Milking', 'Dry', 'Pregnant'].includes(cattle.currentStatus || '') && (
+                      <Typography variant="body2" sx={{ mb: 1 }}><b>Calving Counter:</b> {cattle.healthStats?.calvingCounter || '0'}</Typography>
+                    )}
                     <Typography variant="body2" sx={{ mb: 1 }}><b>Health Status Notes:</b> {cattle.healthStats?.healthStatus || 'N/A'}</Typography>
 
                     {/* Derived Health Stats */}
-                    {(weightGain !== 'N/A' || birthToMotherRatio !== 'N/A') && (
+                    {birthToMotherRatio !== 'N/A' && (
                       <Box sx={{ mt: 2, p: 1.5, bgcolor: 'rgba(0,0,0,0.02)', borderRadius: 1, border: '1px dashed', borderColor: 'divider' }}>
                         <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5, color: 'text.secondary' }}>Derived Analytics</Typography>
-                        {weightGain !== 'N/A' && (
-                          <Typography variant="body2"><b>Total Weight Gain:</b> {weightGain}</Typography>
-                        )}
-                        {birthToMotherRatio !== 'N/A' && (
-                          <Typography variant="body2"><b>Birth/Mother Weight Ratio:</b> {birthToMotherRatio}</Typography>
-                        )}
+                        <Typography variant="body2"><b>Birth/Mother Weight Ratio:</b> {birthToMotherRatio}</Typography>
                       </Box>
                     )}
                   </CardContent>
@@ -661,7 +637,7 @@ export default function CattleProfile() {
                 </TextField>
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField fullWidth label="Date of Birth" type="date" slotProps={{ inputLabel: { shrink: true } }} value={editData.dob} onChange={e => setEditData({ ...editData, dob: e.target.value })} size="small" />
+                <TextField fullWidth label="Age in Years" type="number" value={editData.ageYears} onChange={e => setEditData({ ...editData, ageYears: parseInt(e.target.value) || '' })} size="small" />
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
                 <TextField fullWidth label="Age in Months" type="number" value={editData.ageMonths} onChange={e => setEditData({ ...editData, ageMonths: parseInt(e.target.value) || '' })} size="small" />
@@ -683,21 +659,17 @@ export default function CattleProfile() {
                   <MenuItem value="Pregnant">Pregnant</MenuItem>
                 </TextField>
               </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField fullWidth label="Last Weight (kg)" type="number" value={editData.lastWeight} onChange={e => setEditData({ ...editData, lastWeight: parseFloat(e.target.value) || '' })} size="small" />
-              </Grid>
               <Grid size={{ xs: 12, sm: 4 }}>
                 <TextField fullWidth label="Birth Weight (kg)" type="number" value={editData.healthStats?.birthWeight} onChange={e => setEditData({ ...editData, healthStats: { ...editData.healthStats, birthWeight: parseFloat(e.target.value) || '' } })} size="small" />
               </Grid>
               <Grid size={{ xs: 12, sm: 4 }}>
                 <TextField fullWidth label="Mother Wt at Calving (kg)" type="number" value={editData.healthStats?.motherWeightAtCalving} onChange={e => setEditData({ ...editData, healthStats: { ...editData.healthStats, motherWeightAtCalving: parseFloat(e.target.value) || '' } })} size="small" />
               </Grid>
-              <Grid size={{ xs: 12, sm: 4 }}>
-                <TextField fullWidth label="Body Condition Score" type="number" value={editData.healthStats?.bodyConditionScore} onChange={e => setEditData({ ...editData, healthStats: { ...editData.healthStats, bodyConditionScore: parseFloat(e.target.value) || '' } })} size="small" />
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField fullWidth label="Growth Status" value={editData.healthStats?.growthStatus} onChange={e => setEditData({ ...editData, healthStats: { ...editData.healthStats, growthStatus: e.target.value } })} size="small" />
-              </Grid>
+              {editData.sex === 'Female' && ['Milking', 'Dry', 'Pregnant'].includes(editData.currentStatus) && (
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <TextField fullWidth label="Calving Counter" type="number" value={editData.healthStats?.calvingCounter} onChange={e => setEditData({ ...editData, healthStats: { ...editData.healthStats, calvingCounter: parseInt(e.target.value) || '' } })} size="small" />
+                </Grid>
+              )}
               <Grid size={{ xs: 12, sm: 6 }}>
                 <TextField fullWidth label="Health Status Notes" value={editData.healthStats?.healthStatus} onChange={e => setEditData({ ...editData, healthStats: { ...editData.healthStats, healthStatus: e.target.value } })} size="small" />
               </Grid>

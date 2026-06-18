@@ -1,4 +1,5 @@
 export * from './config';
+export * from './src/schemas/auth';
 export * from './hooks/useCamera';
 export * from './utils/MuzzleModelService';
 export * from './utils/imageUtils';

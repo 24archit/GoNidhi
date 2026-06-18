@@ -19,15 +19,28 @@ export const createCattleRegistration = async (req: any, farmerId: string, paylo
     }
 
     const {
-        tagNo, name, species, breed, sex, dob, ageMonths,
+        tagNo, name, species, breed, sex, ageYears, ageMonths,
         source, purchaseDate, purchasePrice, sireTag, damTag,
-        birthWeight, motherWeightAtCalving, bodyConditionScore,
-        currentWeight, growthStatus, healthStatus, productionStatus,
+        birthWeight, motherWeightAtCalving, calvingCounter,
+        healthStatus, productionStatus,
+        isInformationCorrectAgreement,
         lat, lng
     } = payload;
 
+    if (!species || !sex || !source) {
+        const err = new Error('Species, sex, and source are mandatory fields.');
+        (err as any).statusCode = 400;
+        throw err;
+    }
+
     if (!lat || !lng) {
         const err = new Error('GPS Location is mandatory to register a cow.');
+        (err as any).statusCode = 400;
+        throw err;
+    }
+
+    if (String(isInformationCorrectAgreement) !== 'true') {
+        const err = new Error('You must agree that the information provided is correct.');
         (err as any).statusCode = 400;
         throw err;
     }
@@ -88,7 +101,7 @@ export const createCattleRegistration = async (req: any, farmerId: string, paylo
             species: species || undefined,
             breed: breed || undefined,
             sex: sex || undefined,
-            dob: dob || undefined,
+            ageYears: ageYears ? Number(ageYears) : undefined,
             ageMonths: ageMonths ? Number(ageMonths) : undefined,
             sireTag,
             damTag,
@@ -97,6 +110,7 @@ export const createCattleRegistration = async (req: any, farmerId: string, paylo
                 date: purchaseDate,
                 price: purchasePrice ? Number(purchasePrice) : undefined
             } : undefined,
+            isInformationCorrectAgreement: String(isInformationCorrectAgreement) === 'true',
             location: {
                 lat: Number(lat),
                 lng: Number(lng)
@@ -115,13 +129,11 @@ export const createCattleRegistration = async (req: any, farmerId: string, paylo
                 status: 'PENDING'
             },
             currentStatus: productionStatus,
-            lastWeight: currentWeight ? Number(currentWeight) : undefined,
             healthStats: {
                 birthWeight: birthWeight ? Number(birthWeight) : undefined,
                 motherWeightAtCalving: motherWeightAtCalving ? Number(motherWeightAtCalving) : undefined,
-                growthStatus,
                 healthStatus,
-                bodyConditionScore: bodyConditionScore ? Number(bodyConditionScore) : undefined
+                calvingCounter: calvingCounter ? Number(calvingCounter) : undefined
             }
         });
 

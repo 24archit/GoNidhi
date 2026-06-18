@@ -189,14 +189,23 @@ export const proxyRegisterCow = async (req: Request, res: Response) => {
         }
 
         const {
-            tagNo, name, species, breed, sex, dob, ageMonths,
+            tagNo, name, species, breed, sex, ageYears, ageMonths,
             source, purchaseDate, purchasePrice, sireTag, damTag,
-            birthWeight, motherWeightAtCalving, bodyConditionScore,
-            currentWeight, growthStatus, healthStatus, productionStatus,
+            birthWeight, motherWeightAtCalving, calvingCounter,
+            healthStatus, productionStatus,
+            isInformationCorrectAgreement,
             lat, lng
         } = req.body;
 
+        if (String(isInformationCorrectAgreement) !== 'true') {
+            return res.status(400).json({ success: false, message: 'You must agree that the information is true and correct.' });
+        }
+
         const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+
+        if (!species || !sex || !source) {
+            return res.status(400).json({ success: false, message: 'Species, sex, and source are mandatory fields.' });
+        }
 
         if (!lat || !lng) {
             return res.status(400).json({ success: false, message: 'GPS Location is mandatory to register a cow.' });
@@ -255,7 +264,7 @@ export const proxyRegisterCow = async (req: Request, res: Response) => {
                 species: species || undefined,
                 breed: breed || undefined,
                 sex: sex || undefined,
-                dob: dob || undefined,
+                ageYears: ageYears ? Number(ageYears) : undefined,
                 ageMonths: ageMonths ? Number(ageMonths) : undefined,
                 sireTag,
                 damTag,
@@ -264,6 +273,7 @@ export const proxyRegisterCow = async (req: Request, res: Response) => {
                     date: purchaseDate,
                     price: purchasePrice ? Number(purchasePrice) : undefined
                 } : undefined,
+                isInformationCorrectAgreement: true,
                 location: { lat: Number(lat), lng: Number(lng) },
                 photos: {
                     faceProfile: faceProfileCloudinary,
@@ -276,13 +286,11 @@ export const proxyRegisterCow = async (req: Request, res: Response) => {
                 },
                 aiMetadata: { isRegistered: false, status: 'PENDING' },
                 currentStatus: productionStatus,
-                lastWeight: currentWeight ? Number(currentWeight) : undefined,
                 healthStats: {
                     birthWeight: birthWeight ? Number(birthWeight) : undefined,
                     motherWeightAtCalving: motherWeightAtCalving ? Number(motherWeightAtCalving) : undefined,
-                    growthStatus,
                     healthStatus,
-                    bodyConditionScore: bodyConditionScore ? Number(bodyConditionScore) : undefined
+                    calvingCounter: calvingCounter ? Number(calvingCounter) : undefined
                 }
             });
 

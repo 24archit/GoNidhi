@@ -10,8 +10,7 @@
     "forceConsistentCasingInFileNames": true
   },
   "include": [
-    "src/**/*",
-    "scripts/generateKeys.ts"
+    "src/**/*"
   ],
   "exclude": [
     "node_modules",

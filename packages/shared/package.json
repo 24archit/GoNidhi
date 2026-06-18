@@ -4,7 +4,10 @@
   "private": true,
   "main": "index.ts",
   "scripts": {
-    "build": "echo 'No build required for shared package'"
+    "build": "echo 'No build required for shared package'",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "peerDependencies": {
     "@capacitor-community/camera-preview": "*",
@@ -25,10 +28,16 @@
     "react-router-dom": "*"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3"
+    "@types/react-dom": "^19.2.3",
+    "jsdom": "^29.1.1",
+    "vitest": "^4.1.9"
   },
   "dependencies": {
-    "@mui/system": "^7.3.8"
+    "@mui/system": "^7.3.8",
+    "zod": "^4.4.3"
   }
 }

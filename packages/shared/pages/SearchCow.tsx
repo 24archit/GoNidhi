@@ -20,6 +20,7 @@ import { base64ToFile, compressImage, getImageUrl } from '../utils/imageUtils';
 import { ALLOW_GALLERY_UPLOAD } from '../config';
 import { useProcessing } from '../contexts/ProcessingContext';
 import { Preferences } from '@capacitor/preferences';
+import { preloadMuzzleModel, preloadNimaModel, disposeModels } from '../utils/MuzzleModelService';
 
 import { API_BASE } from '@gonidhi/shared';
 
@@ -291,7 +292,12 @@ const ScanTab = ({ isAdmin }: { isAdmin?: boolean }) => {
 
     const handleSearch = async () => {
         if (!muzzleImage || !faceImage) return;
-        const signal = startProcessing('Finding Cattle', 'Uploading biometrics…');
+        const signal = startProcessing(
+            'Finding Cattle', 
+            'Uploading biometrics…', 
+            false, 
+            'Please be patient and do not close the app. This secure API search process may take about 10-12 minutes to analyze and match across the national database.'
+        );
         updateProgress(15);
 
         try {
@@ -666,6 +672,41 @@ const SearchTab = ({ isAdmin }: { isAdmin?: boolean }) => {
 // ── Main ──────────────────────────────────────────────────────────────────────
 const SearchCow: React.FC<{ isAdmin?: boolean }> = ({ isAdmin }) => {
     const [tab, setTab] = useState<'scan' | 'id'>('scan');
+
+    const { startProcessing, stopProcessing } = useProcessing();
+
+    // Explicitly show blocking overlay while models load
+    useEffect(() => {
+        let isMounted = true;
+        
+        const loadModels = async () => {
+            startProcessing(
+                'Initializing AI...', 
+                'Warming up Neural Engines...', 
+                true, 
+                'Please be patient. This one-time process may take about 2-3 minutes to securely compile the advanced AI models onto your device.'
+            );
+            try {
+                await Promise.all([
+                    preloadMuzzleModel(),
+                    preloadNimaModel()
+                ]);
+            } catch (e) {
+                console.error("Failed to preload models", e);
+            } finally {
+                if (isMounted) stopProcessing();
+            }
+        };
+        
+        // Wait 100ms for UI to render first
+        const timer = setTimeout(loadModels, 100);
+
+        return () => {
+            isMounted = false;
+            clearTimeout(timer);
+            disposeModels();
+        };
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
         <Container maxWidth="sm" sx={{ pt: 2, pb: 12 }}>

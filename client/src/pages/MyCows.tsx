@@ -18,6 +18,7 @@ interface CowListSummary {
     tagNumber: string;
     breed: string;
     currentStatus: string;
+    ageYears?: number;
     ageMonths?: number;
     photos?: { faceProfile?: string, muzzle?: string };
     isDispute?: boolean;
@@ -180,7 +181,7 @@ const MyCows: React.FC = () => {
                                             #{cow.tagNumber}
                                         </Typography>
                                         <Typography variant="caption" color="text.secondary">
-                                            {cow.breed} • {cow.ageMonths ? `${cow.ageMonths}m` : 'Age unknown'}
+                                            {cow.breed} • {cow.ageYears ? `${cow.ageYears}y ` : ''}{cow.ageMonths ? `${cow.ageMonths}m` : 'Age unknown'}
                                         </Typography>
                                     </Stack>
                                 </Box>

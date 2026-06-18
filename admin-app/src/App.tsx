@@ -267,7 +267,7 @@ const App: React.FC = () => {
                 }}
               >
                 <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'secondary.main', flexShrink: 0 }} />
-                Govt. of Odisha
+                Government of Odisha
               </Box>
 
               {/* Accent line */}

@@ -17,6 +17,7 @@ export interface CameraState {
     isRecording: boolean;
     zoomLevel: number;
     maxZoom: number;
+    position: 'rear' | 'front';
 }
 
 export const useCamera = () => {
@@ -26,10 +27,12 @@ export const useCamera = () => {
         isRecording: false,
         zoomLevel: 1,
         maxZoom: 5,
+        position: 'rear',
     });
 
     const activeRef = useRef(false);
     const previewOptionsRef = useRef<CameraPreviewOptions | null>(null);
+    const isFlippingRef = useRef(false);
 
     const buildPreviewOptions = useCallback((overrides: Partial<CameraPreviewOptions> = {}): CameraPreviewOptions => {
         const fallbackWidth = Math.round(window.screen.width || window.innerWidth || 1080);
@@ -160,20 +163,67 @@ export const useCamera = () => {
         }
     }, []);
 
-    const flipCamera = useCallback(async (): Promise<void> => {
+    const flipCamera = useCallback(async (startCallback: () => Promise<void>): Promise<void> => {
+        if (isFlippingRef.current || !activeRef.current) return;
+
+        isFlippingRef.current = true;
         try {
-            await CameraPreview.flip();
+            // Turn off flash to prevent native crash on flip
+            try { await CameraPreview.setFlashMode({ flashMode: 'off' }); } catch (e) { }
+
+            const newPosition = cameraState.position === 'rear' ? 'front' : 'rear';
+
+            // Properly stop through the hook so activeRef is set to false
+            await stopPreview();
+
+            // Give the Android Camera Service time to fully release its hardware lock
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            // Delegate restart to the caller (e.g. the dialog's startPreviewInHost)
+            // so that all native options like 'parent' element are correctly re-applied
+            await startCallback();
+
+            // Only after successful start, update the tracked position
+            setCameraState(prev => ({ ...prev, position: newPosition }));
         } catch (error) {
             console.error('Flip failed:', error);
+        } finally {
+            isFlippingRef.current = false;
         }
-    }, []);
+    }, [cameraState.position, stopPreview]);
 
-    const toggleFlash = useCallback(async (enable: boolean): Promise<void> => {
-        if (!activeRef.current) return;
+    const toggleFlash = useCallback(async (enable: boolean): Promise<boolean> => {
+        if (!activeRef.current) return false;
         try {
-            await CameraPreview.setFlashMode({ flashMode: enable ? 'torch' : 'off' });
+            if (!enable) {
+                await CameraPreview.setFlashMode({ flashMode: 'off' });
+                return true;
+            }
+
+            // Check if device supports flash/torch before turning it on to prevent native crashes
+            const cp = CameraPreview as any;
+            if (cp.getSupportedFlashModes) {
+                const { result } = await cp.getSupportedFlashModes();
+                const modes: string[] = result || [];
+                
+                if (modes.includes('torch')) {
+                    await CameraPreview.setFlashMode({ flashMode: 'torch' });
+                    return true;
+                } else if (modes.includes('on')) {
+                    await CameraPreview.setFlashMode({ flashMode: 'on' });
+                    return true;
+                } else {
+                    console.warn('Flash/Torch is not supported on this camera.');
+                    return false;
+                }
+            } else {
+                // Fallback for older plugin versions
+                await CameraPreview.setFlashMode({ flashMode: 'torch' });
+                return true;
+            }
         } catch (error) {
             console.error('Failed to set flash mode:', error);
+            return false;
         }
     }, []);
 

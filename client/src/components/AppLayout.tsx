@@ -13,6 +13,7 @@ import {
 } from '@mui/icons-material';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
 import { syncManager } from '@gonidhi/shared';
 import { Badge } from '@mui/material';
 import BrandingFooter from './BrandingFooter';
@@ -53,6 +54,8 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     useEffect(() => {
         // Poll localforage occasionally to keep indicator updated (in a real app, use Context or Redux)
         let isChecking = false;
+        let interval: ReturnType<typeof setInterval>;
+
         const checkSyncs = async () => {
             if (isChecking) return;
             isChecking = true;
@@ -64,7 +67,17 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             }
         };
         checkSyncs();
-        const interval = setInterval(checkSyncs, 10000);
+        interval = setInterval(checkSyncs, 10000);
+
+        // Pause polling when app goes to background
+        const appStateListener = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+            if (!isActive) {
+                clearInterval(interval);
+            } else {
+                checkSyncs(); // Immediate check on resume
+                interval = setInterval(checkSyncs, 10000);
+            }
+        });
 
         // Upload when coming online
         const handleOnline = async () => {
@@ -77,6 +90,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         window.addEventListener('online', handleOnline);
         return () => {
             clearInterval(interval);
+            appStateListener.then(listener => listener.remove());
             window.removeEventListener('online', handleOnline);
         };
     }, []);

@@ -6,7 +6,7 @@ import { useProcessing } from '../contexts/ProcessingContext';
 import { Capacitor } from '@capacitor/core';
 
 export const GlobalProcessingOverlay: React.FC = () => {
-    const { isOpen, progress, title, status, hideCancel, stopProcessing } = useProcessing();
+    const { isOpen, progress, title, status, hideCancel, infoText, stopProcessing } = useProcessing();
 
     useEffect(() => {
         if (!isOpen) return;
@@ -133,12 +133,14 @@ export const GlobalProcessingOverlay: React.FC = () => {
                         </motion.svg>
 
                         {/* Number Display */}
-                        <Box sx={{ zIndex: 3, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                            <Typography variant="h3" component="div" sx={{ fontWeight: 800, letterSpacing: '-1px', display: 'flex', alignItems: 'baseline' }}>
-                                {Math.round(progress)}
-                                <span style={{ fontSize: '1.25rem', fontWeight: 600, color: 'rgba(255,255,255,0.5)', marginLeft: '2px' }}>%</span>
-                            </Typography>
-                        </Box>
+                        {progress > 0 && (
+                            <Box sx={{ zIndex: 3, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                <Typography variant="h3" component="div" sx={{ fontWeight: 800, letterSpacing: '-1px', display: 'flex', alignItems: 'baseline' }}>
+                                    {Math.round(progress)}
+                                    <span style={{ fontSize: '1.25rem', fontWeight: 600, color: 'rgba(255,255,255,0.5)', marginLeft: '2px' }}>%</span>
+                                </Typography>
+                            </Box>
+                        )}
                     </Box>
 
                     <Typography variant="h5" sx={{ fontWeight: 800, mb: 1, textAlign: 'center', px: 2, fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
@@ -150,7 +152,7 @@ export const GlobalProcessingOverlay: React.FC = () => {
                     </Typography>
 
                     <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)', textAlign: 'center', px: { xs: 2, sm: 4 }, mb: 4, fontStyle: 'italic', maxWidth: '300px', fontSize: '0.75rem' }}>
-                        Please be patient and do not close the app. This AI process may take about 10-12 minutes to securely analyze and validate the data.
+                        {infoText || 'Please be patient and do not close the app. This process may take a few minutes.'}
                     </Typography>
 
                     {!hideCancel && (

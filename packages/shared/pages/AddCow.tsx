@@ -25,8 +25,9 @@ import type { CameraGuidanceType } from '../components/HTML5CameraDialog';
 import { base64ToFile, compressImage } from '../utils/imageUtils';
 import { ALLOW_GALLERY_UPLOAD } from '../config';
 import { useProcessing } from '../contexts/ProcessingContext';
+import { preloadMuzzleModel, preloadNimaModel, disposeModels, isModelsCached } from '../utils/MuzzleModelService';
 // STEPS MAPPED TO YOUR WORKFLOW
-const steps = ['Basic Info', 'Lineage & Origin', 'Visual ID', 'Farmer KYC', 'Health & Stats', 'Review'];
+const steps = ['Basic Info', 'Lineage & Origin', 'Visual ID', 'Farmer Selfie', 'Health & Stats', 'Review'];
 
 interface CowFormData {
     tagNo: string;
@@ -34,7 +35,7 @@ interface CowFormData {
     species: string;
     breed: string;
     sex: string;
-    dob: string;
+    ageYears: string;
     ageMonths: string;
     source: string;
     purchaseDate: string;
@@ -43,11 +44,9 @@ interface CowFormData {
     damTag: string;
     birthWeight: string;
     motherWeightAtCalving: string;
-    bodyConditionScore: string;
-    currentWeight: string;
-    growthStatus: string;
     healthStatus: string;
     productionStatus: string;
+    calvingCounter: string;
     // Photos
     faceImage: string;
     muzzleImage: string;
@@ -59,6 +58,7 @@ interface CowFormData {
     retryCount?: number;
     id?: string;
     farmerPhone?: string; // ADDED FOR ADMIN
+    isInformationCorrectAgreement: boolean;
 }
 
 interface StepProps {
@@ -72,6 +72,7 @@ interface StepReviewProps {
     formData: CowFormData;
     setActiveStep: (step: number) => void;
     isAdmin?: boolean;
+    handleChange: (field: string) => (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
 // --- STEP 1: BASIC INFORMATION ---
@@ -90,7 +91,7 @@ const StepBasic: React.FC<StepProps> = ({ formData, handleChange, isAdmin }) => 
 
         <Box sx={{ display: 'flex', gap: 1 }}>
             <TextField
-                fullWidth label="Tag No (Animal No)"
+                fullWidth label="Ear Tag Pashu Aadhar (if present)"
                 placeholder="Scan Ear Tag"
                 value={formData.tagNo} onChange={handleChange('tagNo')}
                 InputProps={{
@@ -103,14 +104,16 @@ const StepBasic: React.FC<StepProps> = ({ formData, handleChange, isAdmin }) => 
             />
         </Box>
 
-        <TextField fullWidth label="Given Name" value={formData.name} onChange={handleChange('name')} />
+        <TextField fullWidth label="Cow name (if any) e.g., Gauri, Nandini, etc." value={formData.name} onChange={handleChange('name')} />
 
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-            <TextField select fullWidth label="Species" value={formData.species} onChange={handleChange('species')}>
+            <TextField select fullWidth label="Species" value={formData.species} onChange={handleChange('species')} required>
+                <MenuItem value="" disabled>Select Species</MenuItem>
                 <MenuItem value="Cow">Cow</MenuItem>
                 <MenuItem value="Buffalo">Buffalo</MenuItem>
             </TextField>
-            <TextField select fullWidth label="Sex" value={formData.sex} onChange={handleChange('sex')}>
+            <TextField select fullWidth label="Sex" value={formData.sex} onChange={handleChange('sex')} required>
+                <MenuItem value="" disabled>Select Sex</MenuItem>
                 <MenuItem value="Female">Female</MenuItem>
                 <MenuItem value="Male">Male</MenuItem>
                 <MenuItem value="Freemartin">Freemartin</MenuItem>
@@ -118,26 +121,28 @@ const StepBasic: React.FC<StepProps> = ({ formData, handleChange, isAdmin }) => 
         </Box>
 
         <TextField select fullWidth label="Breed" value={formData.breed} onChange={handleChange('breed')}>
-            <MenuItem value="Gir">Gir</MenuItem>
-            <MenuItem value="Sahiwal">Sahiwal</MenuItem>
-            <MenuItem value="Jersey">Jersey</MenuItem>
-            <MenuItem value="HF">Holstein Friesian</MenuItem>
-            <MenuItem value="Desi">Non-Descript (Desi)</MenuItem>
+            <MenuItem value="" disabled>Select Breed</MenuItem>
+            <MenuItem value="Cross Breed">Cross Breed</MenuItem>
+            <MenuItem value="Bhinjratpuri">Bhinjratpuri</MenuItem>
+            <MenuItem value="motu">motu</MenuItem>
+            <MenuItem value="jamusari">jamusari</MenuItem>
+            <MenuItem value="khariya">khariya</MenuItem>
+            <MenuItem value="graded">graded</MenuItem>
+            <MenuItem value="non descript (desi)">non descript (desi)</MenuItem>
         </TextField>
 
         <Typography variant="subtitle2" color="primary" fontWeight="bold" sx={{ mt: 1 }}>AGE DETAILS</Typography>
 
-        <TextField
-            fullWidth type="date" label="Date of Birth"
-            InputLabelProps={{ shrink: true }}
-            value={formData.dob} onChange={handleChange('dob')}
-        />
-
-        <TextField
-            fullWidth disabled label="Approx Age (Months)"
-            value={formData.ageMonths}
-            helperText="Auto-calculated from DOB"
-        />
+        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+            <TextField
+                fullWidth type="number" label="Age (Years)"
+                value={formData.ageYears} onChange={handleChange('ageYears')}
+            />
+            <TextField
+                fullWidth type="number" label="Age (Months)"
+                value={formData.ageMonths} onChange={handleChange('ageMonths')}
+            />
+        </Box>
     </Stack>
 );
 
@@ -146,7 +151,8 @@ const StepOrigin: React.FC<StepProps> = ({ formData, handleChange }) => (
     <Stack spacing={3}>
         <Typography variant="subtitle2" color="primary" fontWeight="bold">ORIGIN SOURCE</Typography>
 
-        <TextField select fullWidth label="Purchase / Home Born" value={formData.source} onChange={handleChange('source')}>
+        <TextField select fullWidth label="Purchase / Home Born" value={formData.source} onChange={handleChange('source')} required>
+            <MenuItem value="" disabled>Select Source</MenuItem>
             <MenuItem value="Home Born">Home Born</MenuItem>
             <MenuItem value="Purchase">Purchased</MenuItem>
         </TextField>
@@ -160,13 +166,16 @@ const StepOrigin: React.FC<StepProps> = ({ formData, handleChange }) => (
 
         <Divider sx={{ my: 1 }} />
         <Typography variant="subtitle2" color="primary" fontWeight="bold">PARENTAGE (LIFETIME DETAILS)</Typography>
+        <Typography variant="caption" color="text.secondary">
+            If known, please provide the 12-digit Ear Tag (Pashu Aadhar) numbers for this cow's Sire (Father) and Dam (Mother).
+        </Typography>
 
-        <TextField fullWidth label="Sire No (Father Pasu Aadhar)" value={formData.sireTag} onChange={handleChange('sireTag')} />
-        <TextField fullWidth label="Dam No (Mother Pasu Aadhar)" value={formData.damTag} onChange={handleChange('damTag')} />
+        <TextField fullWidth label="Sire No (Father Pasu Aadhar)" helperText="Optional" value={formData.sireTag} onChange={handleChange('sireTag')} />
+        <TextField fullWidth label="Dam No (Mother Pasu Aadhar)" helperText="Optional" value={formData.damTag} onChange={handleChange('damTag')} />
 
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-            <TextField type="number" label="Birth Weight (kg)" value={formData.birthWeight} onChange={handleChange('birthWeight')} />
-            <TextField type="number" label="Mother Wt after Calving" value={formData.motherWeightAtCalving} onChange={handleChange('motherWeightAtCalving')} />
+            <TextField type="number" label="Birth Weight (kg)" helperText="Optional" value={formData.birthWeight} onChange={handleChange('birthWeight')} />
+            <TextField type="number" label="Mother Wt after Calving" helperText="Optional" value={formData.motherWeightAtCalving} onChange={handleChange('motherWeightAtCalving')} />
         </Box>
     </Stack>
 );
@@ -434,13 +443,13 @@ const StepVisual: React.FC<StepProps> = ({ formData, handlePhotoCapture }) => (
     </Stack>
 );
 
-const StepKYC: React.FC<StepProps> = ({ formData, handlePhotoCapture }) => (
+const StepSelfie: React.FC<StepProps> = ({ formData, handlePhotoCapture }) => (
     <Stack spacing={3}>
         <Typography variant="body2" color="text.secondary">
             Take a selfie with the cow to verify farmer identity.
         </Typography>
 
-        <Typography variant="subtitle2" fontWeight="bold">FARMER KYC</Typography>
+        <Typography variant="subtitle2" fontWeight="bold">FARMER SELFIE</Typography>
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr', gap: 2 }}>
             <SmartPhotoBox
                 label="Farmer Selfie with Cow"
@@ -453,39 +462,47 @@ const StepKYC: React.FC<StepProps> = ({ formData, handlePhotoCapture }) => (
     </Stack>
 );
 
-// --- STEP 4: HEALTH & STATS ---
 const StepStats: React.FC<StepProps> = ({ formData, handleChange }) => (
     <Stack spacing={3}>
-        <Typography variant="subtitle2" color="primary" fontWeight="bold">BODY WEIGHT RECORDING</Typography>
+        {formData.sex === 'Female' && (
+            <>
+                <Typography variant="subtitle2" color="primary" fontWeight="bold" sx={{ mt: 1 }}>CURRENT STATUS</Typography>
 
-        <TextField type="number" fullWidth label="Current Body Weight (kg)" value={formData.currentWeight} onChange={handleChange('currentWeight')} />
+                <TextField select fullWidth label="Reproduction Status" value={formData.productionStatus} onChange={handleChange('productionStatus')}>
+                    <MenuItem value="" disabled><em>Select Status</em></MenuItem>
+                    <MenuItem value="Milking">In Milk</MenuItem>
+                    <MenuItem value="Dry">Dry</MenuItem>
+                    <MenuItem value="Pregnant">Pregnant</MenuItem>
+                    <MenuItem value="Heifer">Heifer (Not yet calved)</MenuItem>
+                </TextField>
 
-        <TextField select fullWidth label="Growth Status" value={formData.growthStatus} onChange={handleChange('growthStatus')}>
-            <MenuItem value="Optimum">Optimum Growth (&gt;400g/day)</MenuItem>
-            <MenuItem value="Poor">Poor Growth (&lt;400g/day)</MenuItem>
-        </TextField>
-
-        <Typography variant="subtitle2" color="primary" fontWeight="bold" sx={{ mt: 1 }}>CURRENT STATUS</Typography>
-
-        <TextField select fullWidth label="Reproduction Status" value={formData.productionStatus} onChange={handleChange('productionStatus')}>
-            <MenuItem value="Milking">In Milk</MenuItem>
-            <MenuItem value="Dry">Dry</MenuItem>
-            <MenuItem value="Pregnant">Pregnant</MenuItem>
-            <MenuItem value="Heifer">Heifer (Not yet calved)</MenuItem>
-        </TextField>
+                {['Milking', 'Dry', 'Pregnant'].includes(formData.productionStatus) && (
+                    <TextField 
+                        type="number" 
+                        fullWidth 
+                        label="Calving Counter" 
+                        helperText="Number of times the cow has given birth"
+                        value={formData.calvingCounter} 
+                        onChange={handleChange('calvingCounter')} 
+                    />
+                )}
+            </>
+        )}
 
         <TextField select fullWidth label="Calf Body Condition" value={formData.healthStatus} onChange={handleChange('healthStatus')}>
+            <MenuItem value="" disabled>Select Condition</MenuItem>
             <MenuItem value="Healthy">Healthy</MenuItem>
             <MenuItem value="Underweight">Underweight</MenuItem>
         </TextField>
-
-        <TextField type="number" label="Body Condition Score (1-5)" value={formData.bodyConditionScore} onChange={handleChange('bodyConditionScore')} />
     </Stack>
 );
 
 // --- STEP 5: REVIEW ---
-const StepReview: React.FC<StepReviewProps> = ({ formData, setActiveStep, isAdmin }) => (
+const StepReview: React.FC<StepReviewProps> = ({ formData, setActiveStep, isAdmin, handleChange }) => (
     <Stack spacing={2}>
+        <Alert severity="info" sx={{ borderRadius: 2, py: 0.5 }}>
+            Please review the details below carefully. You must check the declaration agreement at the bottom before submitting.
+        </Alert>
         <Paper elevation={0} sx={{ bgcolor: '#F9FAFB', p: 2, borderRadius: 2 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                 <Typography variant="subtitle2" color="primary" fontWeight="bold">BASIC IDENTIFICATION</Typography>
@@ -497,7 +514,7 @@ const StepReview: React.FC<StepReviewProps> = ({ formData, setActiveStep, isAdmi
             <Typography variant="body2"><b>Species:</b> {formData.species}</Typography>
             <Typography variant="body2"><b>Sex:</b> {formData.sex}</Typography>
             <Typography variant="body2"><b>Breed:</b> {formData.breed || 'None'}</Typography>
-            <Typography variant="body2"><b>DOB:</b> {formData.dob || 'None'} ({formData.ageMonths ? `${formData.ageMonths}m` : 'N/A'})</Typography>
+            <Typography variant="body2"><b>Age:</b> {formData.ageYears ? `${formData.ageYears}y ` : ''}{formData.ageMonths ? `${formData.ageMonths}m` : ''}</Typography>
         </Paper>
 
         <Paper elevation={0} sx={{ bgcolor: '#F9FAFB', p: 2, borderRadius: 2 }}>
@@ -533,7 +550,7 @@ const StepReview: React.FC<StepReviewProps> = ({ formData, setActiveStep, isAdmi
 
         <Paper elevation={0} sx={{ bgcolor: '#F9FAFB', p: 2, borderRadius: 2 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="subtitle2" color="primary" fontWeight="bold">FARMER KYC</Typography>
+                <Typography variant="subtitle2" color="primary" fontWeight="bold">FARMER SELFIE</Typography>
                 <IconButton size="small" onClick={() => setActiveStep(3)}><Edit fontSize="small" /></IconButton>
             </Box>
             <Typography variant="body2"><b>Farmer Selfie:</b> {formData.selfieImage ? 'Captured ✅' : 'Pending ❌'}</Typography>
@@ -544,11 +561,26 @@ const StepReview: React.FC<StepReviewProps> = ({ formData, setActiveStep, isAdmi
                 <Typography variant="subtitle2" color="primary" fontWeight="bold">HEALTH & STATS</Typography>
                 <IconButton size="small" onClick={() => setActiveStep(4)}><Edit fontSize="small" /></IconButton>
             </Box>
-            <Typography variant="body2"><b>Current Weight:</b> {formData.currentWeight || 'None'} kg</Typography>
-            <Typography variant="body2"><b>Growth Status:</b> {formData.growthStatus}</Typography>
-            <Typography variant="body2"><b>Reproduction:</b> {formData.productionStatus}</Typography>
+            <Typography variant="body2"><b>Reproduction:</b> {formData.sex === 'Female' ? formData.productionStatus : 'N/A'}</Typography>
+            {formData.sex === 'Female' && ['Milking', 'Dry', 'Pregnant'].includes(formData.productionStatus) && (
+                <Typography variant="body2"><b>Calving Counter:</b> {formData.calvingCounter || '0'}</Typography>
+            )}
             <Typography variant="body2"><b>Condition Status:</b> {formData.healthStatus}</Typography>
-            <Typography variant="body2"><b>Body Score (BCS):</b> {formData.bodyConditionScore || 'None'}</Typography>
+        </Paper>
+
+        <Paper elevation={0} sx={{ bgcolor: '#F9FAFB', p: 2, borderRadius: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                <input 
+                    type="checkbox" 
+                    id="agreement" 
+                    checked={formData.isInformationCorrectAgreement} 
+                    onChange={handleChange('isInformationCorrectAgreement')} 
+                    style={{ marginTop: '4px', width: '20px', height: '20px', cursor: 'pointer' }}
+                />
+                <label htmlFor="agreement" style={{ fontSize: '0.875rem', cursor: 'pointer', lineHeight: 1.4 }}>
+                    I hereby declare that the information given above is true and correct to the best of my knowledge and belief.
+                </label>
+            </Box>
         </Paper>
 
         <Box sx={{ textAlign: 'center', mt: 2 }}>
@@ -570,13 +602,14 @@ export const AddCow: React.FC<AddCowProps> = ({ isAdmin = false }) => {
 
     const [formData, setFormData] = useState<CowFormData>(
         offlineDraft ? offlineDraft : {
-            tagNo: '', name: '', species: 'Cow', breed: '', sex: 'Female', dob: '', ageMonths: '',
-            source: 'Home Born', purchaseDate: '', purchasePrice: '', sireTag: '', damTag: '',
-            birthWeight: '', motherWeightAtCalving: '', bodyConditionScore: '',
-            currentWeight: '', growthStatus: 'Optimum', healthStatus: 'Healthy', productionStatus: 'Milking',
+            tagNo: '', name: '', species: '', breed: '', sex: '', ageYears: '', ageMonths: '',
+            source: '', purchaseDate: '', purchasePrice: '', sireTag: '', damTag: '',
+            birthWeight: '', motherWeightAtCalving: '', calvingCounter: '',
+            healthStatus: '', productionStatus: '',
             // Photos
             faceImage: '', muzzleImage: '', leftImage: '', rightImage: '', backImage: '', tailImage: '', selfieImage: '',
-            farmerPhone: ''
+            farmerPhone: '',
+            isInformationCorrectAgreement: false
         }
     );
 
@@ -615,6 +648,56 @@ export const AddCow: React.FC<AddCowProps> = ({ isAdmin = false }) => {
         }
     }, [location.key]);
 
+    // Manage AI Lifecycle based on Stepper state
+    useEffect(() => {
+        let isMounted = true;
+
+        if (activeStep === 2) {
+            // Reached Step 3 (Visual ID)
+            const loadModels = async () => {
+                startProcessing(
+                    'Initializing AI...', 
+                    'Warming up Neural Engines...', 
+                    true, 
+                    'Please be patient. This one-time process may take about 2-3 minutes to securely compile the advanced AI models onto your device.'
+                );
+                try {
+                    await Promise.all([
+                        preloadMuzzleModel(),
+                        preloadNimaModel()
+                    ]);
+                } catch (e) {
+                    console.error("Failed to preload models", e);
+                } finally {
+                    if (isMounted) stopProcessing();
+                }
+            };
+            loadModels();
+        } else {
+            // Not on Step 3. If models are in RAM, dispose them with a visual indicator.
+            if (isModelsCached(true)) {
+                startProcessing('Reclaiming Memory...', 'Disposing AI Models...', true);
+                disposeModels();
+                setTimeout(() => {
+                    if (isMounted) stopProcessing();
+                }, 500); // 500ms artificial delay to prevent glitchy flashing UI
+            } else {
+                disposeModels();
+            }
+        }
+
+        return () => {
+            isMounted = false;
+        };
+    }, [activeStep]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Global unmount catch-all
+    useEffect(() => {
+        return () => {
+            disposeModels();
+        };
+    }, []);
+
     useEffect(() => {
         if (scrollRef.current) {
             setTimeout(() => {
@@ -632,28 +715,37 @@ export const AddCow: React.FC<AddCowProps> = ({ isAdmin = false }) => {
     }, [activeStep]);
 
     const handleChange = (field: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
-        const value = e.target.value;
+        const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
         setFormData((prev: CowFormData) => {
-            const updated = { ...prev, [field]: value };
-            if (field === 'dob') {
-                if (value) {
-                    const birth = new Date(value);
-                    const now = new Date();
-                    const months = (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth());
-                    updated.ageMonths = isNaN(months) ? '' : months.toString();
-                } else {
-                    updated.ageMonths = '';
-                }
-            }
-            return updated;
+            return { ...prev, [field]: value };
         });
     };
 
     const queryClient = useQueryClient();
 
     const handleSubmit = async () => {
+        if (!formData.species || !formData.sex || !formData.source) {
+            setFeedback({ type: 'ERROR', title: 'Missing Information', message: 'Species, Sex, and Source are mandatory fields. Please go back and fill them.' });
+            return;
+        }
+
+        if (!formData.isInformationCorrectAgreement) {
+            setFeedback({ type: 'ERROR', title: 'Agreement Required', message: 'You must check the agreement box before submitting.' });
+            return;
+        }
+
+        if (!formData.faceImage || !formData.muzzleImage) {
+            setFeedback({ type: 'ERROR', title: 'Photos Required', message: 'Face Profile and Muzzle photos are mandatory. Please go back and capture them.' });
+            return;
+        }
+
         // Start processing and HIDE the Cancel button
-        startProcessing('Registering Cow', 'Confirming your live location for this submission.', true);
+        startProcessing(
+            'Registering Cow', 
+            'Confirming your live location for this submission.', 
+            true, 
+            'Please be patient and do not close the app. This secure API registration process may take about 10-12 minutes to analyze and upload to the national database.'
+        );
 
         let lat, lng;
         try {
@@ -661,13 +753,13 @@ export const AddCow: React.FC<AddCowProps> = ({ isAdmin = false }) => {
             lat = pos.coords.latitude;
             lng = pos.coords.longitude;
         } catch (err) {
-            console.error('GPS error:', err);
+            console.warn('GPS error:', err);
             stopProcessing();
-            setFeedback({ type: 'ERROR', title: 'Location Required', message: 'Could not fetch your precise GPS location. Please ensure location services are enabled and permissions are granted.' });
+            setFeedback({ type: 'ERROR', title: 'GPS Required', message: 'Live GPS location is strictly required to register a cow. Please ensure GPS is enabled and permissions are granted.' });
             return;
         }
 
-        updateProgress(30, 'Uploading required cow and KYC photos securely...');
+        updateProgress(30, 'Uploading required cow and selfie photos securely...');
 
         const apiPayload = {
             ...formData,
@@ -705,7 +797,7 @@ export const AddCow: React.FC<AddCowProps> = ({ isAdmin = false }) => {
 
                 const fd = new FormData();
                 Object.keys(apiPayload).forEach((key) => {
-                    fd.append(key, apiPayload[key]);
+                    fd.append(key, (apiPayload as any)[key]);
                 });
 
                 const endpoint = isAdmin ? `${API_BASE}/api/admin/cattle/proxy-register` : `${API_BASE}/api/farmer/cattle`;
@@ -1015,7 +1107,7 @@ export const AddCow: React.FC<AddCowProps> = ({ isAdmin = false }) => {
                         <Button
                             size="small"
                             variant="contained"
-                            disabled={isOpen}
+                            disabled={isOpen || (activeStep === steps.length - 1 && !formData.isInformationCorrectAgreement)}
                             onClick={activeStep === steps.length - 1 ? handleSubmit : handleNext}
                             endIcon={activeStep === steps.length - 1 ? <CheckCircle sx={{ fontSize: '14px !important' }} /> : <ArrowForward sx={{ fontSize: '14px !important' }} />}
                             sx={{ fontWeight: 700, fontSize: '0.7rem', px: 1.5, py: 0.5, borderRadius: 4, boxShadow: 'none' }}
@@ -1033,9 +1125,9 @@ export const AddCow: React.FC<AddCowProps> = ({ isAdmin = false }) => {
                         {activeStep === 0 && <StepBasic formData={formData} handleChange={handleChange} isAdmin={isAdmin} />}
                         {activeStep === 1 && <StepOrigin formData={formData} handleChange={handleChange} />}
                         {activeStep === 2 && <StepVisual formData={formData} handleChange={handleChange} handlePhotoCapture={handlePhotoCapture} />}
-                        {activeStep === 3 && <StepKYC formData={formData} handleChange={handleChange} handlePhotoCapture={handlePhotoCapture} />}
+                        {activeStep === 3 && <StepSelfie formData={formData} handleChange={handleChange} handlePhotoCapture={handlePhotoCapture} />}
                         {activeStep === 4 && <StepStats formData={formData} handleChange={handleChange} />}
-                        {activeStep === 5 && <StepReview formData={formData} setActiveStep={setActiveStep} isAdmin={isAdmin} />}
+                        {activeStep === 5 && <StepReview formData={formData} setActiveStep={setActiveStep} isAdmin={isAdmin} handleChange={handleChange} />}
                     </Paper>
 
                     {/* INLINE BOTTOM NAVIGATION */}
@@ -1062,7 +1154,7 @@ export const AddCow: React.FC<AddCowProps> = ({ isAdmin = false }) => {
                             </Button>
                             <Button
                                 variant="contained"
-                                disabled={isOpen}
+                                disabled={isOpen || (activeStep === steps.length - 1 && !formData.isInformationCorrectAgreement)}
                                 onClick={activeStep === steps.length - 1 ? handleSubmit : handleNext}
                                 endIcon={activeStep === steps.length - 1 ? <CheckCircle /> : <ArrowForward />}
                                 sx={{ borderRadius: 6, px: 4, boxShadow: '0 4px 12px rgba(46, 125, 50, 0.3)', fontWeight: 700, py: 1.5 }}

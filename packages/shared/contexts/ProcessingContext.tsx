@@ -6,10 +6,11 @@ interface ProcessingState {
     title: string;
     status: string;
     hideCancel: boolean;
+    infoText?: string;
 }
 
 interface ProcessingContextType extends ProcessingState {
-    startProcessing: (title: string, initialStatus?: string, hideCancel?: boolean) => AbortSignal;
+    startProcessing: (title: string, initialStatus?: string, hideCancel?: boolean, infoText?: string) => AbortSignal;
     updateProgress: (progress: number, status?: string) => void;
     stopProcessing: (abort?: boolean) => void;
 }
@@ -23,10 +24,11 @@ export const ProcessingProvider: React.FC<{ children: ReactNode }> = ({ children
         progress: 0,
         title: '',
         status: '',
-        hideCancel: false
+        hideCancel: false,
+        infoText: ''
     });
 
-    const startProcessing = (title: string, initialStatus: string = '', hideCancel: boolean = false) => {
+    const startProcessing = (title: string, initialStatus: string = '', hideCancel: boolean = false, infoText?: string) => {
         if (abortControllerRef.current) {
             abortControllerRef.current.abort(); // Abort any stale one
         }
@@ -38,7 +40,8 @@ export const ProcessingProvider: React.FC<{ children: ReactNode }> = ({ children
             progress: 0,
             title,
             status: initialStatus,
-            hideCancel
+            hideCancel,
+            infoText
         });
         
         return controller.signal;
@@ -59,7 +62,7 @@ export const ProcessingProvider: React.FC<{ children: ReactNode }> = ({ children
         setState(prev => ({ ...prev, isOpen: false }));
         // Let animations complete before resetting text/progress
         setTimeout(() => {
-            setState({ isOpen: false, progress: 0, title: '', status: '', hideCancel: false });
+            setState({ isOpen: false, progress: 0, title: '', status: '', hideCancel: false, infoText: '' });
         }, 500); 
     };
 

@@ -22,7 +22,9 @@ import * as tf from '@tensorflow/tfjs';
 // Import Pages
 import AppLayout from './components/AppLayout';
 import Home from './pages/Home';
-import { AddCow, SearchCow } from '@gonidhi/shared';
+// Lazy load heavy AI and camera routes
+const AddCow = React.lazy(() => import('@gonidhi/shared').then(module => ({ default: module.AddCow })));
+const SearchCow = React.lazy(() => import('@gonidhi/shared').then(module => ({ default: module.SearchCow })));
 import CowProfile from './pages/CowProfile';
 import MyCows from './pages/MyCows';
 import UserProfile from './pages/UserProfile';
@@ -87,7 +89,15 @@ const LocationGuard = ({ children }: { children: React.ReactNode }) => {
 const AnimatedOutlet = () => {
   const outlet = useOutlet();
   // Instagram uses instant tab switching. No page slide animations here!
-  return <>{outlet}</>;
+  return (
+    <React.Suspense fallback={
+      <Box sx={{ display: 'flex', height: '100vh', justifyContent: 'center', alignItems: 'center' }}>
+        <CircularProgress />
+      </Box>
+    }>
+      {outlet}
+    </React.Suspense>
+  );
 };
 
 const MainLayout = ({ isFirstLaunch, isAuthenticated }: { isFirstLaunch: boolean; isAuthenticated: boolean }) => {
@@ -137,22 +147,19 @@ const AnimatedRoutes: React.FC<{ isFirstLaunch: boolean; isAuthenticated: boolea
 const App: React.FC = () => {
   const [isFirstLaunch, setIsFirstLaunch] = useState<boolean | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-  const [isModelLoaded, setIsModelLoaded] = useState(false);
+  const [isAppReady, setIsAppReady] = useState(false);
 
   useEffect(() => {
-    // Yield to the browser render cycle first, then start heavy AI loading
+    // Yield to the browser render cycle first, then start health check
     const timer = setTimeout(async () => {
-      // Run model preloading and server health check in parallel
       try {
         await Promise.allSettled([
-          preloadMuzzleModel(),
-          tf.loadGraphModel('/model/nima/model.json'), // 👈 ADD THIS LINE
           getServerHealthAPI()
         ]);
-        setIsModelLoaded(true);
+        setIsAppReady(true);
       } catch (err) {
         console.error('Initialization error:', err);
-        setIsModelLoaded(true); // Continue anyway so we don't block app forever
+        setIsAppReady(true); // Continue anyway so we don't block app forever
       }
     }, 1000); // 1-second delay ensures your app's initial UI loads smoothly
 
@@ -184,7 +191,7 @@ const App: React.FC = () => {
   }, []);
 
   // Show a loading spinner while checking local storage
-  if (isFirstLaunch === null || isAuthenticated === null || !isModelLoaded) {
+  if (isFirstLaunch === null || isAuthenticated === null || !isAppReady) {
     return (
       <ThemeProvider theme={theme}>
         <Box
@@ -254,7 +261,7 @@ const App: React.FC = () => {
                 }}
               >
                 <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'secondary.main', flexShrink: 0 }} />
-                Govt. of Odisha
+                Government of Odisha
               </Box>
 
               {/* Accent line */}

@@ -43,7 +43,7 @@ export const resizeImage = (base64Str: string, maxWidth: number = 1080, quality:
             ctx.imageSmoothingQuality = 'high';
             ctx.drawImage(img, 0, 0, width, height);
 
-            resolve(canvas.toDataURL('image/jpeg', quality));
+            resolve(canvas.toDataURL('image/webp', quality));
         };
         img.onerror = (err) => reject(err);
     });
@@ -95,8 +95,8 @@ export const compressImage = (dataUrl: string, maxWidth = 1080, maxHeight = 1080
 
             ctx.drawImage(img, 0, 0, width, height);
 
-            // Use the dynamic quality parameter here
-            resolve(canvas.toDataURL('image/jpeg', quality));
+            // Use the dynamic quality parameter here, exporting as highly-efficient WebP
+            resolve(canvas.toDataURL('image/webp', quality));
         };
         img.onerror = reject;
         img.src = dataUrl;
