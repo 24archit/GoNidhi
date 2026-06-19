@@ -2,13 +2,16 @@ import { Cattle } from '../models/Cattel';
 import { User } from '../models/User';
 import { cleanupCowCloudResources } from '../services/cattleService';
 import { dlApiClient } from '../utils/dlApiClient';
+import { getAllQdrantCowIds, deleteCowVectors } from '../utils/qdrantClient';
 import mongoose from 'mongoose';
 import logger from '../utils/logger';
+
+import cron from 'node-cron';
 
 let cleanupRunning = false;
 
 export const startCleanupJob = () => {
-    logger.info('[Jobs] Starting Database & Vector Store Reconciliation Job (1h interval)');
+    logger.info('[Jobs] Initializing Database & Vector Store Reconciliation Cron Job (Runs every hour)');
 
     const runCleanup = async () => {
         if (cleanupRunning) {
@@ -56,15 +59,22 @@ export const startCleanupJob = () => {
 
             logger.info('[CleanupJob] Phase 2: Scanning Qdrant for split-brain orphaned vectors...');
             try {
-                const qdrantResponse = await dlApiClient.get('/vectors/cow_ids');
-                const qdrantCowIds: string[] = qdrantResponse.data.cow_ids;
+                const qdrantCowIds: string[] = await getAllQdrantCowIds();
 
                 if (qdrantCowIds && qdrantCowIds.length > 0) {
-                    const validMongoCows = await Cattle.find({
-                        _id: { $in: qdrantCowIds }
-                    }, '_id').lean();
+                    const validMongoCowIds = new Set<string>();
+                    
+                    // Batch query MongoDB in chunks of 5000 to prevent database memory overload
+                    const BATCH_SIZE = 5000;
+                    for (let i = 0; i < qdrantCowIds.length; i += BATCH_SIZE) {
+                        const batch = qdrantCowIds.slice(i, i + BATCH_SIZE);
+                        const validMongoCowsBatch = await Cattle.find({
+                            _id: { $in: batch }
+                        }, '_id').lean();
+                        
+                        validMongoCowsBatch.forEach(cow => validMongoCowIds.add(cow._id.toString()));
+                    }
 
-                    const validMongoCowIds = new Set(validMongoCows.map(cow => cow._id.toString()));
                     const orphanCowIds = qdrantCowIds.filter(id => !validMongoCowIds.has(id));
 
                     if (orphanCowIds.length > 0) {
@@ -72,10 +82,10 @@ export const startCleanupJob = () => {
                         let deletedCount = 0;
                         for (const orphanId of orphanCowIds) {
                             try {
-                                await dlApiClient.delete(`/cow/${orphanId}`);
+                                await deleteCowVectors(orphanId);
                                 deletedCount++;
                             } catch (err: any) {
-                                logger.error(err, `[CleanupJob] Failed to delete orphan vector ${orphanId}:`);
+                                // Error already logged in qdrantClient
                             }
                         }
                         logger.info(`[CleanupJob] Purged ${deletedCount}/${orphanCowIds.length} orphan vectors from Qdrant.`);
@@ -95,9 +105,6 @@ export const startCleanupJob = () => {
         }
     };
 
-    // Delay initial cold start execution by 5 minutes to allow DL-API and DBs to stabilize
-    setTimeout(() => {
-        runCleanup();
-        setInterval(runCleanup, 60 * 60 * 1000); // 1 hour
-    }, 5 * 60 * 1000);
+    // Run the cleanup cron job at minute 0 past every hour
+    cron.schedule('0 * * * *', runCleanup);
 };

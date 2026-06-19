@@ -48,53 +48,7 @@ export const getCattleDetails = async (req: Request, res: Response) => {
             }
             return res.status(404).json({ success: false, message: 'Cattle not found' });
         }
-        if (cattle.aiMetadata.status === 'PENDING') {
-            try {
-                const statusRes = await dlApiClient.get(`/status/${cattle._id}`);
 
-                if (statusRes.data.status === 'COMPLETED') {
-                    logger.info(`[DL-API Sync Admin] Polled DL-API and found COMPLETED result for cow ${cattle._id}. Processing locally.`);
-                    await processDlApiResult(statusRes.data.result);
-
-                    const updatedCow = await Cattle.findById(cattle._id).populate('farmerId', 'name contact.phone location.village location.district');
-                    if (!updatedCow) {
-                        const rejectionData = recentRejections.get(cattle._id.toString());
-                        return res.status(400).json({
-                            success: false,
-                            isRejected: true,
-                            status: rejectionData ? (rejectionData as any).status : 'FAILED',
-                            message: rejectionData ? (rejectionData as any).message : 'Registration failed.'
-                        });
-                    }
-                    cattle = updatedCow;
-                }
-            } catch (err: any) {
-                if (err.response && err.response.status === 404) {
-                    logger.info(`[DL-API Sync Admin] Cow ${cattle._id} is PENDING but DL-API has no record of it. Discarding.`);
-                    const deletedCow = await Cattle.findOneAndDelete({ _id: cattle._id, 'aiMetadata.status': 'PENDING' });
-                    if (deletedCow) {
-                        await cleanupCowCloudResources(deletedCow);
-                        const session = await mongoose.startSession();
-                        try {
-                            await session.withTransaction(async () => {
-                                if (deletedCow.farmerId) {
-                                    await User.findByIdAndUpdate(deletedCow.farmerId._id || deletedCow.farmerId, { $pull: { cows: deletedCow._id } }, { session });
-                                }
-                            });
-                        } finally {
-                            await session.endSession();
-                        }
-                    }
-
-                    return res.status(400).json({
-                        success: false,
-                        isRejected: true,
-                        status: 'AI_CRASH',
-                        message: 'The AI server dropped the registration request due to an internal error. Please try again.'
-                    });
-                }
-            }
-        }
 
         // Mask internal PROCESSING_RESULT status from client
         if (cattle.aiMetadata && cattle.aiMetadata.status === 'PROCESSING_RESULT') {

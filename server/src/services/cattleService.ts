@@ -4,6 +4,7 @@ import { uploadBufferToCloudinary, deleteFromCloudinary } from './cloudinaryServ
 import { dlApiClient } from '../utils/dlApiClient';
 import mongoose from 'mongoose';
 import logger from '../utils/logger';
+import { deleteCowVectors } from '../utils/qdrantClient';
 
 export const createCattleRegistration = async (req: any, farmerId: string, payload: any, files: any) => {
     // 1. ATOMICITY CHECK: Ensure the farmer does not already have a PENDING cow.
@@ -228,11 +229,11 @@ export const cleanupCowCloudResources = async (cow: any) => {
             if (cow.photos.selfie) await deleteFromCloudinary(cow.photos.selfie).catch(() => { });
         }
 
-        // Instruct DL-API to delete vectors
+        // Instruct Qdrant to directly delete vectors
         try {
-            await dlApiClient.delete(`/cow/${cow._id}`);
+            await deleteCowVectors(cow._id.toString());
         } catch (dlErr) {
-            logger.error(dlErr, `Failed to delete vectors for cow ${cow._id} in DL-API:`);
+            // Error already logged in qdrantClient
         }
 
     } catch (err) {

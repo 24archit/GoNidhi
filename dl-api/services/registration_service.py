@@ -33,48 +33,24 @@ async def process_registration_safe(payload: dict):
         print(f"Error processing async registration: {e}")
     finally:
         glb.gpu_queue_size -= 1
-        
-    # Keep the job result in memory for 5 minutes so client polling can fetch it.
-    try:
-        await asyncio.sleep(300)
-    except asyncio.CancelledError:
-        pass
-    finally:
-        glb.active_jobs.pop(payload.get("cow_id"), None)
-
-def get_job_status(cow_id: str):
-    if cow_id in glb.active_jobs:
-        job = glb.active_jobs[cow_id]
-        if job["status"] == "COMPLETED":
-            return {"status": "COMPLETED", "result": job.get("result", {})}
-        return {"status": job["status"]}
-    raise HTTPException(status_code=404, detail="Job not found or already finished")
 
 async def process_registration(payload: dict, notify_webhook: bool = True, fastapi_req: Request = None) -> dict:
     cow_id = payload.get("cow_id", "unknown")
-    glb.active_jobs[cow_id] = {
-        "status": "PROCESSING",
-        "start_time": time.time(),
-        "upload_tasks": []
-    }
+    upload_tasks = []
     
     try:
-        result = await _process_registration_impl(payload, notify_webhook, fastapi_req)
-        if cow_id in glb.active_jobs:
-            glb.active_jobs[cow_id]["status"] = "COMPLETED"
-            glb.active_jobs[cow_id]["result"] = result
+        result = await _process_registration_impl(payload, upload_tasks, notify_webhook, fastapi_req)
         return result
     except Exception as worker_err:
         traceback.print_exc()
         
         # CLEANUP: If the pipeline crashed, ensure we delete any Cloudinary crops we just uploaded.
-        if cow_id in glb.active_jobs and "upload_tasks" in glb.active_jobs[cow_id]:
-            for task in glb.active_jobs[cow_id]["upload_tasks"]:
-                try:
-                    url = await task
-                    if url: delete_image_from_cloudinary(url)
-                except:
-                    pass
+        for task in upload_tasks:
+            try:
+                url = await task
+                if url: delete_image_from_cloudinary(url)
+            except:
+                pass
                     
         # CRITICAL CLEANUP: Proactively wipe Qdrant to prevent ghost vectors if the pipeline crashed post-insertion
         try:
@@ -85,14 +61,6 @@ async def process_registration(payload: dict, notify_webhook: bool = True, fasta
 
         error_msg = "Registration failed due to a system processing error. Please try again or contact support if the issue persists."
         
-        if cow_id in glb.active_jobs:
-            glb.active_jobs[cow_id]["status"] = "COMPLETED"
-            glb.active_jobs[cow_id]["result"] = {
-                "cow_id": cow_id,
-                "status": "FAILED",
-                "error_message": error_msg
-            }
-            
         if notify_webhook:
             try:
                 send_webhook({
@@ -104,7 +72,7 @@ async def process_registration(payload: dict, notify_webhook: bool = True, fasta
                 print(f"Failed to send registration failure webhook: {webhook_err}")
         raise worker_err
 
-async def _process_registration_impl(payload: dict, notify_webhook: bool = True, fastapi_req: Request = None) -> dict:
+async def _process_registration_impl(payload: dict, upload_tasks: list, notify_webhook: bool = True, fastapi_req: Request = None) -> dict:
     start_time = time.time()
     farmer_id = payload["farmer_id"]
     cow_id = payload["cow_id"]
@@ -163,17 +131,17 @@ async def _process_registration_impl(payload: dict, notify_webhook: bool = True,
 
             if muzzle_crop is not None:
                 muzzle_upload_task = asyncio.create_task(asyncio.to_thread(upload_crop_to_cloudinary, muzzle_crop["clahe"]))
-                glb.active_jobs[cow_id]["upload_tasks"].append(muzzle_upload_task)
+                upload_tasks.append(muzzle_upload_task)
                 muzzle_superpoint_cache = glb.dl.extract_superpoint_base64(muzzle_crop["clahe"])
                 
             if face_crop is not None:
                 face_upload_task = asyncio.create_task(asyncio.to_thread(upload_crop_to_cloudinary, face_crop["clahe"]))
-                glb.active_jobs[cow_id]["upload_tasks"].append(face_upload_task)
+                upload_tasks.append(face_upload_task)
                 
             face_muzzle_superpoint_cache = None
             if face_muzzle_crop is not None:
                 face_muzzle_upload_task = asyncio.create_task(asyncio.to_thread(upload_crop_to_cloudinary, face_muzzle_crop["clahe"]))
-                glb.active_jobs[cow_id]["upload_tasks"].append(face_muzzle_upload_task)
+                upload_tasks.append(face_muzzle_upload_task)
                 face_muzzle_superpoint_cache = glb.dl.extract_superpoint_base64(face_muzzle_crop["clahe"])
                 
     except Exception as e:

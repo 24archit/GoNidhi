@@ -146,62 +146,7 @@ export const getCowProfile = asyncHandler(async (req: Request, res: Response) =>
         }
         return res.status(404).json({ success: false, message: 'Cow not found or unauthorized' });
     }
-    if (cow.aiMetadata.status === 'PENDING') {
-        try {
-            const statusRes = await dlApiClient.get(`/status/${cow._id}`);
 
-            if (statusRes.data.status === 'COMPLETED') {
-                logger.info(`[DL-API Sync] Polled DL-API and found COMPLETED result for cow ${cow._id}. Processing locally.`);
-                await processDlApiResult(statusRes.data.result);
-
-                // Fetch the updated cow or return 404 if it was a failure/duplicate and got deleted
-                const updatedCow = await Cattle.findById(cow._id);
-                if (!updatedCow) {
-                    const rejectionData = recentRejections.get(cow._id.toString());
-                    const failureStatus = rejectionData ? (rejectionData as any).status : 'FAILED';
-                    const messageStr = rejectionData ? (rejectionData as any).message : undefined;
-                    const userMessage = getRejectionMessage(failureStatus, messageStr);
-
-                    return res.status(400).json({
-                        success: false,
-                        isRejected: true,
-                        status: failureStatus,
-                        message: userMessage
-                    });
-                }
-                cow = updatedCow;
-            }
-            // If it returns PROCESSING, we just fall through and return PENDING.
-        } catch (err: any) {
-            // If the DL-API returns a 404, the job is no longer active (crashed or lost).
-            if (err.response && err.response.status === 404) {
-                logger.info(`[DL-API Sync] Cow ${cow._id} is PENDING but DL-API has no record of it. Discarding.`);
-
-                // Background cleanup only if we successfully delete
-                const deletedCow = await Cattle.findOneAndDelete({ _id: cow._id, 'aiMetadata.status': 'PENDING' });
-
-                if (deletedCow) {
-                    cleanupCowCloudResources(deletedCow);
-
-                    const session = await mongoose.startSession();
-                    try {
-                        await session.withTransaction(async () => {
-                            await User.findByIdAndUpdate(authReq.user.id, { $pull: { cows: cow._id } }, { session });
-                        });
-                    } finally {
-                        await session.endSession();
-                    }
-                }
-
-                return res.status(400).json({
-                    success: false,
-                    isRejected: true,
-                    status: 'AI_CRASH',
-                    message: 'The AI server dropped the registration request due to an internal error. Please try again.'
-                });
-            }
-        }
-    }
 
     // Mask internal PROCESSING_RESULT status from client so it continues polling instead of crashing
     if (cow.aiMetadata && cow.aiMetadata.status === 'PROCESSING_RESULT') {

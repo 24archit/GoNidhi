@@ -8,8 +8,6 @@ xgb_model = None
 # Thread lock to prevent concurrent GPU/Model inferences
 gpu_lock = threading.Lock()
 
-# Registry for active background jobs
-active_jobs = {}
 
 # Tracker for concurrent requests to fail fast if queue is too long
 gpu_queue_size = 0

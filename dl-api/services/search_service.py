@@ -33,37 +33,7 @@ async def search_cow_safe(req: SearchRequest, fastapi_req: Request):
     finally:
         glb.gpu_queue_size -= 1
 
-def delete_cow_embeddings_from_db(cow_id: str):
-    try:
-        glb.db.delete_embedding(cow_id)
-        return {"status": "success", "message": f"Vectors for cow {cow_id} deleted successfully."}
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail="Internal Server Error: An unexpected error occurred while deleting vectors.")
 
-def get_all_cow_ids_from_db():
-    try:
-        cow_ids = set()
-        offset = None
-        while True:
-            res = glb.db.client.scroll(
-                collection_name=glb.db.collection_name,
-                limit=1000,
-                offset=offset,
-                with_payload=["cow_id"],
-                with_vectors=False
-            )
-            points, next_offset = res
-            for point in points:
-                if point.payload and "cow_id" in point.payload:
-                    cow_ids.add(point.payload["cow_id"])
-            if next_offset is None:
-                break
-            offset = next_offset
-        return {"cow_ids": list(cow_ids)}
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail="Error fetching cow IDs")
 
 def _raise_early_search_error(m_status: str, detail: str, req: SearchRequest, start_time: float, spoof_prob_muzzle=None, spoof_prob_face=None):
     inference_time = (time.time() - start_time) * 1000

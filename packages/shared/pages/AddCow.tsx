@@ -627,7 +627,6 @@ export const AddCow: React.FC<AddCowProps> = ({ isAdmin = false }) => {
     const [activeStep, setActiveStep] = useState(offlineDraft ? 5 : 0);
     const scrollRef = useRef<HTMLDivElement>(null);
     const [cooldownRemaining, setCooldownRemaining] = useState(0);
-    const apiAttemptsRef = useRef(0);
 
     const { isOpen, startProcessing, updateProgress, stopProcessing } = useProcessing();
 
@@ -885,8 +884,6 @@ export const AddCow: React.FC<AddCowProps> = ({ isAdmin = false }) => {
                         if (errData.isRejected) {
                             clearInterval(pollInterval);
                             stopProcessing();
-                            apiAttemptsRef.current += 1;
-                            const newCount = apiAttemptsRef.current;
 
                             if (errData.status === 'DISPUTE') {
                                 setDisputeCowId(cowId);
@@ -894,11 +891,7 @@ export const AddCow: React.FC<AddCowProps> = ({ isAdmin = false }) => {
                                 return;
                             }
 
-                            if (newCount >= 10) {
-                                setFeedback({ type: 'FATAL', title: 'Registration Blocked', message: `You have failed AI validation 10 times. To prevent spam, you cannot submit this registration right now.` });
-                            } else {
-                                setFeedback({ type: 'ERROR', title: 'AI Verification Failed', message: `${errData.message || 'The AI detected an issue with your photos.'} (Attempt ${newCount} of 10)` });
-                            }
+                            setFeedback({ type: 'ERROR', title: 'AI Verification Failed', message: errData.message || 'The AI detected an issue with your photos.' });
                         } else if (pollAttempts >= maxPolls) {
                             clearInterval(pollInterval);
                             stopProcessing();
