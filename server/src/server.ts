@@ -59,8 +59,12 @@ const allowedOrigins = [
 const corsOptionsDelegate = (req: any, callback: any) => {
   const origin = req.header('Origin');
   
-  // Allow health checks from Render/internal without origin, and bypass for tests
-  if (process.env.NODE_ENV === 'test' || (!origin && (req.path === '/' || req.path === '/api/health'))) {
+  // Allow health checks from Render/internal without origin, bypass for tests, and allow webhooks
+  if (
+    process.env.NODE_ENV === 'test' || 
+    (!origin && (req.path === '/' || req.path === '/api/health')) ||
+    req.path.includes('/webhook/')
+  ) {
     return callback(null, { origin: true });
   }
 
