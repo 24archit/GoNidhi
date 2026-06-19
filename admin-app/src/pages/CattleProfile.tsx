@@ -640,7 +640,12 @@ export default function CattleProfile() {
                 <TextField fullWidth label="Age in Years" type="number" value={editData.ageYears} onChange={e => setEditData({ ...editData, ageYears: parseInt(e.target.value) || '' })} size="small" />
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField fullWidth label="Age in Months" type="number" value={editData.ageMonths} onChange={e => setEditData({ ...editData, ageMonths: parseInt(e.target.value) || '' })} size="small" />
+                <TextField fullWidth label="Age in Months" type="number" value={editData.ageMonths} onChange={e => {
+                  let val = parseInt(e.target.value);
+                  if (val > 11) val = 11;
+                  else if (val < 0) val = 0;
+                  setEditData({ ...editData, ageMonths: isNaN(val) ? '' : val });
+                }} size="small" InputProps={{ inputProps: { min: 0, max: 11 } }} helperText="Max 11 months" />
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
                 <TextField fullWidth label="Sire Tag" value={editData.sireTag} onChange={e => setEditData({ ...editData, sireTag: e.target.value })} size="small" />

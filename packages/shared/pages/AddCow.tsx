@@ -91,20 +91,20 @@ const StepBasic: React.FC<StepProps> = ({ formData, handleChange, isAdmin }) => 
 
         <Box sx={{ display: 'flex', gap: 1 }}>
             <TextField
-                fullWidth label="Ear Tag Pashu Aadhar (if present)"
-                placeholder="Scan Ear Tag"
+                fullWidth label="Ear Tag No. (Optional)"
+                placeholder="Scan or enter Pashu Aadhar"
+                helperText="Enter 12-digit Pashu Aadhar tag if present"
                 value={formData.tagNo} onChange={handleChange('tagNo')}
-                InputProps={{
-                    endAdornment: (
-                        <InputAdornment position="end">
-                            <IconButton color="primary"><QrCodeScanner /></IconButton>
-                        </InputAdornment>
-                    )
-                }}
             />
         </Box>
 
-        <TextField fullWidth label="Cow name (if any) e.g., Gauri, Nandini, etc." value={formData.name} onChange={handleChange('name')} />
+        <TextField 
+            fullWidth 
+            label="Cow Name (Optional)" 
+            placeholder="e.g., Gauri, Nandini" 
+            value={formData.name} 
+            onChange={handleChange('name')} 
+        />
 
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
             <TextField select fullWidth label="Species" value={formData.species} onChange={handleChange('species')} required>
@@ -124,11 +124,11 @@ const StepBasic: React.FC<StepProps> = ({ formData, handleChange, isAdmin }) => 
             <MenuItem value="" disabled>Select Breed</MenuItem>
             <MenuItem value="Cross Breed">Cross Breed</MenuItem>
             <MenuItem value="Bhinjratpuri">Bhinjratpuri</MenuItem>
-            <MenuItem value="motu">motu</MenuItem>
-            <MenuItem value="jamusari">jamusari</MenuItem>
-            <MenuItem value="khariya">khariya</MenuItem>
-            <MenuItem value="graded">graded</MenuItem>
-            <MenuItem value="non descript (desi)">non descript (desi)</MenuItem>
+            <MenuItem value="Motu">Motu</MenuItem>
+            <MenuItem value="Jamusari">Jamusari</MenuItem>
+            <MenuItem value="Khariya">Khariya</MenuItem>
+            <MenuItem value="Graded">Graded</MenuItem>
+            <MenuItem value="Non Descript (Desi)">Non Descript (Desi)</MenuItem>
         </TextField>
 
         <Typography variant="subtitle2" color="primary" fontWeight="bold" sx={{ mt: 1 }}>AGE DETAILS</Typography>
@@ -137,10 +137,21 @@ const StepBasic: React.FC<StepProps> = ({ formData, handleChange, isAdmin }) => 
             <TextField
                 fullWidth type="number" label="Age (Years)"
                 value={formData.ageYears} onChange={handleChange('ageYears')}
+                InputProps={{ inputProps: { min: 0 } }}
             />
             <TextField
                 fullWidth type="number" label="Age (Months)"
-                value={formData.ageMonths} onChange={handleChange('ageMonths')}
+                value={formData.ageMonths} onChange={(e) => {
+                    const val = parseInt(e.target.value);
+                    if (val > 11) {
+                        e.target.value = '11';
+                    } else if (val < 0) {
+                        e.target.value = '0';
+                    }
+                    handleChange('ageMonths')(e);
+                }}
+                InputProps={{ inputProps: { min: 0, max: 11 } }}
+                helperText="Max 11 months"
             />
         </Box>
     </Stack>
@@ -333,7 +344,7 @@ const SmartPhotoBox: React.FC<SmartPhotoBoxProps> = ({ label, currentImage, requ
                 sx={{
                     bgcolor: '#F3F4F6', border: '2px dashed #CBD5E1', borderRadius: 1,
                     p: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                    height: required ? 160 : 110, cursor: 'pointer', position: 'relative', overflow: 'hidden',
+                    minHeight: required ? 160 : 110, height: '100%', cursor: 'pointer', position: 'relative', overflow: 'hidden',
                     transition: '0.2s', '&:active': { transform: 'scale(0.98)' }
                 }}
             >
@@ -345,7 +356,7 @@ const SmartPhotoBox: React.FC<SmartPhotoBoxProps> = ({ label, currentImage, requ
                             bgcolor: 'rgba(0,0,0,0.5)', color: 'white',
                             py: 0.5, px: 1, display: 'flex', alignItems: 'center', justifyContent: 'center'
                         }}>
-                            <Typography variant="caption" fontWeight="bold" noWrap>{label}</Typography>
+                            <Typography variant="caption" fontWeight="bold" noWrap sx={{ minWidth: 0 }}>{label}</Typography>
                         </Box>
                         <Box sx={{
                             position: 'absolute', bottom: 0, left: 0, right: 0,
@@ -613,7 +624,7 @@ export const AddCow: React.FC<AddCowProps> = ({ isAdmin = false }) => {
         }
     );
 
-    const [activeStep, setActiveStep] = useState(0);
+    const [activeStep, setActiveStep] = useState(offlineDraft ? 5 : 0);
     const scrollRef = useRef<HTMLDivElement>(null);
     const [cooldownRemaining, setCooldownRemaining] = useState(0);
     const apiAttemptsRef = useRef(0);
@@ -765,13 +776,13 @@ export const AddCow: React.FC<AddCowProps> = ({ isAdmin = false }) => {
             ...formData,
             lat,
             lng,
-            faceImage: base64ToFile(formData.faceImage || formData.muzzleImage, 'face_image.jpg'),
-            muzzleImage: base64ToFile(formData.muzzleImage, 'muzzle_image.jpg'),
-            leftImage: base64ToFile(formData.leftImage, 'left_image.jpg'),
-            rightImage: base64ToFile(formData.rightImage, 'right_image.jpg'),
-            backImage: base64ToFile(formData.backImage, 'back_image.jpg'),
-            tailImage: base64ToFile(formData.tailImage, 'tail_image.jpg'),
-            selfieImage: base64ToFile(formData.selfieImage, 'selfie_image.jpg'),
+            faceImage: base64ToFile(formData.faceImage || formData.muzzleImage, 'face_image.webp'),
+            muzzleImage: base64ToFile(formData.muzzleImage, 'muzzle_image.webp'),
+            leftImage: base64ToFile(formData.leftImage, 'left_image.webp'),
+            rightImage: base64ToFile(formData.rightImage, 'right_image.webp'),
+            backImage: base64ToFile(formData.backImage, 'back_image.webp'),
+            tailImage: base64ToFile(formData.tailImage, 'tail_image.webp'),
+            selfieImage: base64ToFile(formData.selfieImage, 'selfie_image.webp'),
         };
 
         if (!navigator.onLine) {
@@ -782,7 +793,7 @@ export const AddCow: React.FC<AddCowProps> = ({ isAdmin = false }) => {
                 await syncManager.savePendingCow({ ...formData, lat, lng });
                 localStorage.setItem('last_registration_time', Date.now().toString());
                 stopProcessing();
-                setFeedback({ type: 'OFFLINE_SAVED', title: 'Saved Locally (Offline)', message: 'No internet connection detected. Your data is safely stored on this device and will sync automatically when you are back online.' });
+                setFeedback({ type: 'OFFLINE_SAVED', title: 'Saved to Offline Sync', message: 'You have no internet connection right now. Your registration has been saved locally.' });
             } catch (err) {
                 console.error('Failed to save locally', err);
                 stopProcessing();
@@ -899,14 +910,35 @@ export const AddCow: React.FC<AddCowProps> = ({ isAdmin = false }) => {
             } catch (err: any) {
                 stopProcessing();
                 const backendMsg = err.response?.data?.message || err.message;
+                const status = err.response?.status;
                 console.error('Server error during registration request', backendMsg, err);
-                try {
-                    if (offlineDraft && offlineDraft.id) await syncManager.removePendingCow(offlineDraft.id);
-                    await syncManager.savePendingCow({ ...formData, lat, lng });
-                    localStorage.setItem('last_registration_time', Date.now().toString());
-                    setFeedback({ type: 'SERVER_ERROR_SAVED', title: 'Saved Locally (Server Error)', message: `Server error: ${backendMsg || 'Please try again'}. Your registration has been saved locally for review and will automatically sync later.` });
-                } catch (localErr) {
-                    console.error('Failed to save locally as fallback', localErr);
+
+                // Determine if this is a network/server issue or a client validation issue
+                // We only want to save offline if the server is unreachable or crashed (500+)
+                const isNetworkOrServerError = !err.response || status >= 500 || status === 408 || err.code === 'ECONNABORTED';
+
+                if (isNetworkOrServerError) {
+                    try {
+                        if (offlineDraft && offlineDraft.id) await syncManager.removePendingCow(offlineDraft.id);
+                        await syncManager.savePendingCow({ ...formData, lat, lng });
+                        localStorage.setItem('last_registration_time', Date.now().toString());
+                        setFeedback({ 
+                            type: 'SERVER_ERROR_SAVED', 
+                            title: 'Saved to Offline Sync', 
+                            message: 'Our servers are currently busy or unreachable. Your registration has been saved locally.' 
+                        });
+                    } catch (localErr) {
+                        console.error('Failed to save locally as fallback', localErr);
+                        setFeedback({ type: 'ERROR', title: 'Registration Failed', message: 'Network error occurred and we could not save your draft.' });
+                    }
+                } else {
+                    // This is a 400-level validation error from the backend. 
+                    // DO NOT save to sync-later queue. Tell the user to fix the data.
+                    setFeedback({ 
+                        type: 'ERROR', 
+                        title: 'Validation Error', 
+                        message: backendMsg || 'Please fix the errors in your form and try again.' 
+                    });
                 }
             }
         }
@@ -982,7 +1014,7 @@ export const AddCow: React.FC<AddCowProps> = ({ isAdmin = false }) => {
                             {(feedback.type === 'OFFLINE_SAVED' || feedback.type === 'SERVER_ERROR_SAVED') && (
                                 <Box sx={{ mt: 2, p: 1.5, bgcolor: '#F9FAFB', borderRadius: 2, display: 'flex', alignItems: 'center', gap: 1.5 }}>
                                     <CheckCircle color="success" />
-                                    <Typography variant="body2" fontWeight={600}>Don't worry! Your filled data is safely preserved on your device.</Typography>
+                                    <Typography variant="body2" fontWeight={600}>Action Required: Please visit the Offline Sync page later to review and submit this registration.</Typography>
                                 </Box>
                             )}
                             {feedback.type === 'ERROR' && (
@@ -1135,6 +1167,10 @@ export const AddCow: React.FC<AddCowProps> = ({ isAdmin = false }) => {
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: 1,
+                        pt: 2,
+                        mt: 'auto',
                         mb: 4
                     }}>
                         <Button

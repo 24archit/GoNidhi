@@ -107,7 +107,7 @@ export const createCattleRegistration = async (req: any, farmerId: string, paylo
             damTag,
             source,
             purchaseDetails: source === 'Purchase' ? {
-                date: purchaseDate,
+                date: purchaseDate || undefined,
                 price: purchasePrice ? Number(purchasePrice) : undefined
             } : undefined,
             isInformationCorrectAgreement: String(isInformationCorrectAgreement) === 'true',
@@ -128,11 +128,11 @@ export const createCattleRegistration = async (req: any, farmerId: string, paylo
                 isRegistered: false,
                 status: 'PENDING'
             },
-            currentStatus: productionStatus,
+            currentStatus: productionStatus || undefined,
             healthStats: {
                 birthWeight: birthWeight ? Number(birthWeight) : undefined,
                 motherWeightAtCalving: motherWeightAtCalving ? Number(motherWeightAtCalving) : undefined,
-                healthStatus,
+                healthStatus: healthStatus || undefined,
                 calvingCounter: calvingCounter ? Number(calvingCounter) : undefined
             }
         });

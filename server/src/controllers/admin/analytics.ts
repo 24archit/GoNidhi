@@ -76,7 +76,8 @@ export const getAiLogs = async (req: Request, res: Response) => {
         const logs = await AiLog.find(query)
             .sort({ timestamp: -1 })
             .skip(skip)
-            .limit(limit);
+            .limit(limit)
+            .lean();
 
         const total = await AiLog.countDocuments(query);
 

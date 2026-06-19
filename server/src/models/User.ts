@@ -61,4 +61,9 @@ const UserSchema = new Schema<IUser>({
     lastLogoutAt: { type: Date }
 }, { timestamps: true });
 
+// Index for fast role-based listing and pagination in admin dashboard
+UserSchema.index({ role: 1, createdAt: -1 });
+// Text index to replace slow $regex queries on farmer names
+UserSchema.index({ name: 'text' });
+
 export const User = mongoose.model<IUser>('User', UserSchema);

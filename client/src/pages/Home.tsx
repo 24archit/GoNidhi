@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Button, Stack, Alert, AlertTitle, Collapse, CircularProgress } from '@mui/material';
+import { Box, Typography, Button, Stack, Alert, AlertTitle, Collapse, CircularProgress, Paper, Avatar, Chip } from '@mui/material';
 import PetsIcon from '@mui/icons-material/Pets';
 import FavoriteIcon from '@mui/icons-material/Favorite';
 import WifiOffIcon from '@mui/icons-material/WifiOff';
+import ArrowForwardIos from '@mui/icons-material/ArrowForwardIos';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import PullToRefresh from 'react-simple-pull-to-refresh';
 import { getMyCattleAPI } from '../apis/apis';
 import { Preferences } from '@capacitor/preferences';
+import { getImageUrl } from '@gonidhi/shared';
 
 // Importing your existing dashboard components
 import StatCard from '../components/dashboard/StatCard';
@@ -20,7 +22,23 @@ interface CowSummary {
     currentStatus: string;
     isSick: boolean;
     isDispute?: boolean;
+    species?: string;
+    sex?: string;
+    tagNumber?: string;
+    ageYears?: number;
+    ageMonths?: number;
+    photos?: { faceProfile?: string; muzzle?: string };
 }
+
+const getStatusColor = (status: string) => {
+    switch (status) {
+        case 'Sick': return 'error';
+        case 'Pregnant': return 'warning';
+        case 'Heifer': return 'info';
+        case 'Dry': return 'default';
+        default: return 'success';
+    }
+};
 
 
 // Cache the name in memory so it doesn't flicker during asynchronous fetching on tab switches
@@ -176,22 +194,52 @@ const Home: React.FC = () => {
                     ) : (
                         /* POPULATED STATE UI: Shown when cows exist */
                         <Box>
-                            {nonDisputedCows.slice(0, 2).map((cow: CowSummary, index: number) => (
-                                <Box
-                                    key={index}
-                                    sx={{
-                                        p: 2,
-                                        mb: 2,
-                                        bgcolor: 'background.paper',
-                                        borderRadius: '12px',
-                                        boxShadow: '0px 2px 8px rgba(0,0,0,0.05)',
-                                        cursor: 'pointer'
-                                    }}
+                            {nonDisputedCows.slice(0, 2).map((cow: CowSummary) => (
+                                <Paper
+                                    key={cow._id}
+                                    elevation={0}
                                     onClick={() => navigate(`/profile/${cow._id}`)}
+                                    sx={{
+                                        p: 2, borderRadius: 3, border: '1px solid #eee',
+                                        display: 'flex', alignItems: 'center', gap: 2,
+                                        cursor: 'pointer', mb: 2,
+                                        transition: 'all 0.2s ease',
+                                        '&:active': { bgcolor: '#f5f5f5', transform: 'scale(0.98)' }
+                                    }}
                                 >
-                                    <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>{cow.name}</Typography>
-                                    <Typography variant="body2" color="text.secondary">{cow.breed} • {cow.currentStatus}</Typography>
-                                </Box>
+                                    <Avatar src={getImageUrl(cow.photos?.faceProfile) || getImageUrl(cow.photos?.muzzle) || 'https://placehold.co/100'} variant="rounded" sx={{ width: 64, height: 64, borderRadius: 3 }} />
+
+                                    <Box sx={{ flexGrow: 1 }}>
+                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5, gap: 1 }}>
+                                            <Typography variant="subtitle1" fontWeight="bold" noWrap sx={{ flex: 1, minWidth: 0 }}>
+                                                {cow.name ? cow.name : <Typography component="span" sx={{ fontStyle: 'italic', color: 'text.disabled', fontSize: 'inherit', fontWeight: 'inherit' }}>Unnamed</Typography>}
+                                            </Typography>
+                                            <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0, flexWrap: 'wrap', gap: 0.5, justifyContent: 'flex-end' }}>
+                                                <Chip label={cow.species || 'Species N/A'} size="small" color={cow.species ? "primary" : "default"} sx={{ minHeight: 20, fontSize: '0.65rem', height: 'auto', opacity: cow.species ? 1 : 0.6 }} />
+                                                <Chip label={cow.sex || 'Sex N/A'} size="small" color={cow.sex ? "secondary" : "default"} sx={{ minHeight: 20, fontSize: '0.65rem', height: 'auto', opacity: cow.sex ? 1 : 0.6 }} />
+                                                {cow.sex === 'Female' && cow.currentStatus && (
+                                                    <Chip
+                                                        label={cow.currentStatus}
+                                                        size="small"
+                                                        color={getStatusColor(cow.currentStatus) as any}
+                                                        sx={{ minHeight: 20, height: 'auto', fontSize: '0.65rem', fontWeight: 600 }}
+                                                    />
+                                                )}
+                                            </Stack>
+                                        </Box>
+
+                                        <Stack direction="row" spacing={1} alignItems="center">
+                                            <Typography variant="caption" sx={{ bgcolor: 'grey.100', px: 0.8, py: 0.2, borderRadius: 1, color: cow.tagNumber ? 'text.primary' : 'text.disabled', fontStyle: cow.tagNumber ? 'normal' : 'italic' }}>
+                                                #{cow.tagNumber || 'N/A'}
+                                            </Typography>
+                                            <Typography variant="caption" color="text.secondary">
+                                                {cow.breed || <span style={{ fontStyle: 'italic', opacity: 0.6 }}>Breed N/A</span>} • {(cow.ageYears || cow.ageMonths) ? `${cow.ageYears ? `${cow.ageYears}y ` : ''}${cow.ageMonths ? `${cow.ageMonths}m` : ''}` : <span style={{ fontStyle: 'italic', opacity: 0.6 }}>Age N/A</span>}
+                                            </Typography>
+                                        </Stack>
+                                    </Box>
+
+                                    <ArrowForwardIos fontSize="small" sx={{ color: '#ccc', fontSize: 14 }} />
+                                </Paper>
                             ))}
 
                             <Button

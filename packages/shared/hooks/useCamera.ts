@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 import { CameraPreview, type CameraPreviewOptions } from '@capacitor-community/camera-preview';
 import { Capacitor } from '@capacitor/core';
 
-const base64ToBlob = (base64: string, mimeType = 'image/jpeg'): Blob => {
+const base64ToBlob = (base64: string, mimeType = 'image/webp'): Blob => {
     const byteString = atob(base64);
     const ab = new ArrayBuffer(byteString.length);
     const ia = new Uint8Array(ab);

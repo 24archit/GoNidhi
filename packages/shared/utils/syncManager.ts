@@ -68,13 +68,13 @@ export const syncManager = {
                 try {
                     const apiPayload = {
                         ...cow,
-                        faceImage: base64ToFile(cow.faceImage, 'face_image.jpg'),
-                        muzzleImage: base64ToFile(cow.muzzleImage, 'muzzle_image.jpg'),
-                        leftImage: base64ToFile(cow.leftImage, 'left_image.jpg'),
-                        rightImage: base64ToFile(cow.rightImage, 'right_image.jpg'),
-                        backImage: base64ToFile(cow.backImage, 'back_image.jpg'),
-                        tailImage: base64ToFile(cow.tailImage, 'tail_image.jpg'),
-                        selfieImage: base64ToFile(cow.selfieImage, 'selfie_image.jpg'),
+                        faceImage: base64ToFile(cow.faceImage, 'face_image.webp'),
+                        muzzleImage: base64ToFile(cow.muzzleImage, 'muzzle_image.webp'),
+                        leftImage: base64ToFile(cow.leftImage, 'left_image.webp'),
+                        rightImage: base64ToFile(cow.rightImage, 'right_image.webp'),
+                        backImage: base64ToFile(cow.backImage, 'back_image.webp'),
+                        tailImage: base64ToFile(cow.tailImage, 'tail_image.webp'),
+                        selfieImage: base64ToFile(cow.selfieImage, 'selfie_image.webp'),
                     };
 
                     const fd = new FormData();

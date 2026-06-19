@@ -7,7 +7,7 @@ from fastapi import Request, HTTPException
 
 from core import globals as glb
 from core.config import EXPRESS_WEBHOOK_URL
-from services.image_service import download_image, encode_crop
+from services.image_service import download_image, encode_crop, upload_crop_to_cloudinary, delete_image_from_cloudinary
 from services.webhook_service import send_webhook
 from services.fusion_service import compute_cosine_similarity, evaluate_biometric_match
 from services.tournament_service import run_biometric_tournament, compute_traditional_metrics
@@ -49,7 +49,8 @@ async def process_registration(payload: dict, notify_webhook: bool = True, fasta
     cow_id = payload.get("cow_id", "unknown")
     glb.active_jobs[cow_id] = {
         "status": "PROCESSING",
-        "start_time": time.time()
+        "start_time": time.time(),
+        "upload_tasks": []
     }
     
     try:
@@ -60,6 +61,23 @@ async def process_registration(payload: dict, notify_webhook: bool = True, fasta
         return result
     except Exception as worker_err:
         traceback.print_exc()
+        
+        # CLEANUP: If the pipeline crashed, ensure we delete any Cloudinary crops we just uploaded.
+        if cow_id in glb.active_jobs and "upload_tasks" in glb.active_jobs[cow_id]:
+            for task in glb.active_jobs[cow_id]["upload_tasks"]:
+                try:
+                    url = await task
+                    if url: delete_image_from_cloudinary(url)
+                except:
+                    pass
+                    
+        # CRITICAL CLEANUP: Proactively wipe Qdrant to prevent ghost vectors if the pipeline crashed post-insertion
+        try:
+            glb.db.delete_embedding(cow_id)
+            print(f"Proactively wiped Qdrant vectors for {cow_id} following pipeline crash.")
+        except Exception as qdrant_err:
+            print(f"Failed to wipe Qdrant during crash recovery for {cow_id}: {qdrant_err}")
+
         error_msg = "Registration failed due to a system processing error. Please try again or contact support if the issue persists."
         
         if cow_id in glb.active_jobs:
@@ -136,17 +154,23 @@ async def _process_registration_impl(payload: dict, notify_webhook: bool = True,
                 spatial_face_emb = glb.dl.get_spatial_embeddings(face_crop["raw"], "face") if face_crop else None
                 spatial_face_muzzle_emb = glb.dl.get_spatial_embeddings(face_muzzle_crop["raw"], "muzzle") if face_muzzle_crop else None
 
+            muzzle_upload_task = None
+            face_upload_task = None
+            face_muzzle_upload_task = None
+
             if muzzle_crop is not None:
-                muzzle_crop_b64 = encode_crop(muzzle_crop["clahe"])
+                muzzle_upload_task = asyncio.create_task(asyncio.to_thread(upload_crop_to_cloudinary, muzzle_crop["clahe"]))
+                glb.active_jobs[cow_id]["upload_tasks"].append(muzzle_upload_task)
                 muzzle_superpoint_cache = glb.dl.extract_superpoint_base64(muzzle_crop["clahe"])
                 
             if face_crop is not None:
-                face_crop_b64 = encode_crop(face_crop["clahe"])
+                face_upload_task = asyncio.create_task(asyncio.to_thread(upload_crop_to_cloudinary, face_crop["clahe"]))
+                glb.active_jobs[cow_id]["upload_tasks"].append(face_upload_task)
                 
             face_muzzle_superpoint_cache = None
-            face_muzzle_crop_b64 = None
             if face_muzzle_crop is not None:
-                face_muzzle_crop_b64 = encode_crop(face_muzzle_crop["clahe"])
+                face_muzzle_upload_task = asyncio.create_task(asyncio.to_thread(upload_crop_to_cloudinary, face_muzzle_crop["clahe"]))
+                glb.active_jobs[cow_id]["upload_tasks"].append(face_muzzle_upload_task)
                 face_muzzle_superpoint_cache = glb.dl.extract_superpoint_base64(face_muzzle_crop["clahe"])
                 
     except Exception as e:
@@ -164,33 +188,33 @@ async def _process_registration_impl(payload: dict, notify_webhook: bool = True,
     if is_not_a_cow:
         match_status = "NOT_A_COW"
         final_confidence = 0.0
-        verdict["user_reason"] = "Images do not appear to contain a cow."
+        verdict["user_reason"] = "We couldn't detect a cow. Please ensure the cow is clearly visible and the photos are well-lit before trying again."
         verdict["developer_reason"] = "YOLO confidence < 0.20 for cow detection."
         
     elif is_spoof_muzzle:
         match_status = "SPOOF_DETECTED_MUZZLE"
         final_confidence = 0.0
-        verdict["user_reason"] = "Spoofing detected in the Muzzle image. Make sure it is a real photo, not a screen or print."
+        verdict["user_reason"] = "The muzzle photo appears to be a picture of a screen or paper. Please capture a live photo directly from the cow."
         verdict["developer_reason"] = "Anti-Spoofing model detected presentation attack."
         
     elif muzzle_emb is None and face_emb is None:
         match_status = "NO_BIOMETRICS_DETECTED"
         final_confidence = 0.0
-        verdict["user_reason"] = "Could not detect either a Face or Muzzle. Please retake the photos clearly."
+        verdict["user_reason"] = "We couldn't detect the face or muzzle. Please retake the photos close-up, ensuring the cow's face is fully in the frame."
         verdict["developer_reason"] = "Both Face and Muzzle detections failed."
         print(f"Both Face and Muzzle detection failed for cow {cow_id}.")
         
     elif muzzle_emb is None:
         match_status = "NO_MUZZLE_DETECTED"
         final_confidence = 0.0
-        verdict["user_reason"] = "Could not detect the muzzle clearly in the Muzzle profile image. Retake the Muzzle profile."
+        verdict["user_reason"] = "The muzzle is not clearly visible. Please wipe the muzzle clean and retake a sharp, close-up photo."
         verdict["developer_reason"] = "Muzzle detection failed."
         print(f"Muzzle detection failed for cow {cow_id}.")
 
     elif face_emb is None:
         match_status = "NO_FACE_DETECTED"
         final_confidence = 0.0
-        verdict["user_reason"] = "Could not detect the face clearly in the Face profile image. Retake the Face profile."
+        verdict["user_reason"] = "The face is not clearly visible. Please retake the face photo ensuring both eyes and horns (if any) are in the frame."
         verdict["developer_reason"] = "Face detection failed."
         print(f"Face detection failed for cow {cow_id}.")
         
@@ -274,9 +298,9 @@ async def _process_registration_impl(payload: dict, notify_webhook: bool = True,
             match_status = "SUCCESS"
             try:
                 if muzzle_emb or spatial_muzzle_emb: 
-                    glb.db.add_embedding({"megadescriptor": muzzle_emb, "spatial_muzzle": spatial_muzzle_emb}, cow_id, farmer_id, source="muzzle", cow_name=cow_name, image_url=muzzle_url, superpoint_cache=muzzle_superpoint_cache, muzzle_crop_b64=muzzle_crop_b64)
+                    glb.db.add_embedding({"megadescriptor": muzzle_emb, "spatial_muzzle": spatial_muzzle_emb}, cow_id, farmer_id, source="muzzle", cow_name=cow_name, image_url=muzzle_url, superpoint_cache=muzzle_superpoint_cache)
                 if face_muzzle_emb or spatial_face_muzzle_emb:
-                    glb.db.add_embedding({"megadescriptor": face_muzzle_emb, "spatial_muzzle": spatial_face_muzzle_emb}, cow_id, farmer_id, source="face_muzzle", cow_name=cow_name, image_url=face_url, superpoint_cache=face_muzzle_superpoint_cache, muzzle_crop_b64=face_muzzle_crop_b64)
+                    glb.db.add_embedding({"megadescriptor": face_muzzle_emb, "spatial_muzzle": spatial_face_muzzle_emb}, cow_id, farmer_id, source="face_muzzle", cow_name=cow_name, image_url=face_url, superpoint_cache=face_muzzle_superpoint_cache)
                 if face_emb or spatial_face_emb: 
                     glb.db.add_embedding({"megadescriptor": face_emb, "spatial_face": spatial_face_emb}, cow_id, farmer_id, source="face", cow_name=cow_name, image_url=face_url)
                 print(f"Successfully registered new cow {cow_id}. Not a duplicate.")
@@ -291,7 +315,12 @@ async def _process_registration_impl(payload: dict, notify_webhook: bool = True,
     inference_time = (time.time() - start_time) * 1000
     
     trad_metrics = compute_traditional_metrics(muzzle_crop, matched_image_url) if 'muzzle_crop' in locals() else {}
-    num_crops = sum(x is not None for x in [muzzle_crop_b64, face_crop_b64, face_muzzle_crop if 'face_muzzle_crop' in locals() else None])
+    # Wait for uploads to finish concurrently if they exist
+    muzzle_crop_url = await muzzle_upload_task if 'muzzle_upload_task' in locals() and muzzle_upload_task else None
+    face_crop_url = await face_upload_task if 'face_upload_task' in locals() and face_upload_task else None
+    face_muzzle_crop_url = await face_muzzle_upload_task if 'face_muzzle_upload_task' in locals() and face_muzzle_upload_task else None
+
+    num_crops = sum(x is not None for x in [muzzle_crop_url, face_crop_url, face_muzzle_crop_url])
     
     face_sim_score = face_match.get("similarity") if 'face_match' in locals() and face_match else (res_f.get("similarity") if 'res_f' in locals() and isinstance(res_f, dict) else best_face_sim)
     muzzle_sim_score = best_features.get("muzzle_sim") if 'best_features' in locals() and best_features else (matched_candidate.get("similarity") if 'matched_candidate' in locals() and matched_candidate else best_muzzle_sim)
@@ -307,8 +336,8 @@ async def _process_registration_impl(payload: dict, notify_webhook: bool = True,
         num_crops=num_crops,
         muzzle_url=muzzle_url,
         face_url=face_url,
-        muzzle_crop_b64=muzzle_crop_b64,
-        face_crop_b64=face_crop_b64,
+        muzzle_crop_b64=muzzle_crop_url,
+        face_crop_b64=face_crop_url,
         muzzle_conf=muzzle_conf,
         face_conf=face_conf,
         spoof_prob_muzzle=spoof_prob_muzzle,

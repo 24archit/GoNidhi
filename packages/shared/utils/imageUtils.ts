@@ -7,6 +7,25 @@
  */
 import { API_BASE } from '@gonidhi/shared';
 
+/**
+ * Injects Cloudinary optimization parameters (f_auto, q_auto, width) into a raw Cloudinary upload URL.
+ * Falls back to returning the original URL if it is not a recognizable Cloudinary upload URL.
+ */
+export const optimizeCloudinaryUrl = (url: string, width: number = 500): string => {
+    if (!url) return url;
+    
+    // Only process cloudinary URLs that don't already have transformations
+    const cloudinaryPattern = /res\.cloudinary\.com\/.*\/image\/upload\/(v\d+\/.*)$/;
+    const match = url.match(cloudinaryPattern);
+    
+    if (match) {
+        // If it matches a raw upload URL, insert the optimization flags
+        return url.replace('/upload/', `/upload/f_auto,q_auto,w_${width}/`);
+    }
+    
+    return url;
+};
+
 export const resizeImage = (base64Str: string, maxWidth: number = 1080, quality: number = 0.85): Promise<string> => {
     return new Promise((resolve, reject) => {
         const img = new Image();
@@ -54,7 +73,7 @@ export const base64ToFile = (base64String: string | File | unknown, filename: st
     if (!base64String || typeof base64String !== 'string' || !base64String.startsWith('data:image')) return base64String;
 
     const arr = base64String.split(',');
-    const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+    const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/webp';
     const bstr = atob(arr[1]);
     let n = bstr.length;
     const u8arr = new Uint8Array(n);
@@ -106,7 +125,7 @@ export const compressImage = (dataUrl: string, maxWidth = 1080, maxHeight = 1080
 export const getImageUrl = (filename?: string | null): string => {
     if (!filename) return '';
     if (filename.startsWith('http') || filename.startsWith('data:image')) {
-        return filename;
+        return optimizeCloudinaryUrl(filename, 500);
     }
 
     return `${API_BASE}/uploads/${filename}`;

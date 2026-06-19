@@ -73,7 +73,8 @@ export const getMyCattle = asyncHandler(async (req: Request, res: Response) => {
     const cattle = await Cattle.find(searchQuery, search ? { score: { $meta: "textScore" } } : {})
         .sort(sortOptions)
         .skip(skip)
-        .limit(limit);
+        .limit(limit)
+        .lean();
 
     const totalFiltered = await Cattle.countDocuments(searchQuery);
 

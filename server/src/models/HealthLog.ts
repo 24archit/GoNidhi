@@ -16,7 +16,7 @@ export interface IHealthLog extends Document {
 }
 
 const HealthLogSchema = new Schema<IHealthLog>({
-    cattleId: { type: Schema.Types.ObjectId, ref: 'Cattle', required: true, index: true },
+    cattleId: { type: Schema.Types.ObjectId, ref: 'Cattle', required: true },
     farmerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     type: {
         type: String,
@@ -35,5 +35,10 @@ const HealthLogSchema = new Schema<IHealthLog>({
 
     nextDueDate: Date
 }, { timestamps: true });
+
+// Compound index to quickly fetch a cow's health history sorted chronologically
+HealthLogSchema.index({ cattleId: 1, date: -1 });
+// Foreign key index for the farmer
+HealthLogSchema.index({ farmerId: 1 });
 
 export const HealthLog = mongoose.model<IHealthLog>('HealthLog', HealthLogSchema);

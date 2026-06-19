@@ -27,7 +27,8 @@ export const getFarmers = async (req: Request, res: Response) => {
         const farmers = await User.find(query)
             .sort({ createdAt: -1 })
             .skip(skip)
-            .limit(limit);
+            .limit(limit)
+            .lean();
 
         const total = await User.countDocuments(query);
 

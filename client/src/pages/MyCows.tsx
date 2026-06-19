@@ -17,6 +17,8 @@ interface CowListSummary {
     name: string;
     tagNumber: string;
     breed: string;
+    species?: string;
+    sex?: string;
     currentStatus: string;
     ageYears?: number;
     ageMonths?: number;
@@ -164,24 +166,30 @@ const MyCows: React.FC = () => {
                                 <Avatar src={getImageUrl(cow.photos?.faceProfile) || getImageUrl(cow.photos?.muzzle) || 'https://placehold.co/100'} variant="rounded" sx={{ width: 64, height: 64, borderRadius: 3 }} />
 
                                 <Box sx={{ flexGrow: 1 }}>
-                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
-                                        <Typography variant="subtitle1" fontWeight="bold">
-                                            {cow.name}
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5, width: '100%' }}>
+                                        <Typography variant="subtitle1" fontWeight="bold" noWrap sx={{ mr: 1, flex: 1, minWidth: 0 }}>
+                                            {cow.name ? cow.name : <Typography component="span" sx={{ fontStyle: 'italic', color: 'text.disabled', fontSize: 'inherit', fontWeight: 'inherit' }}>Unnamed</Typography>}
                                         </Typography>
-                                        <Chip
-                                            label={cow.currentStatus}
-                                            size="small"
-                                            color={getStatusColor(cow.currentStatus) as "default" | "primary" | "secondary" | "error" | "info" | "success" | "warning"}
-                                            sx={{ height: 20, fontSize: '0.7rem', fontWeight: 600 }}
-                                        />
+                                        <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0, flexWrap: 'wrap', gap: 0.5, justifyContent: 'flex-end' }}>
+                                            <Chip label={cow.species || 'Species N/A'} size="small" color={cow.species ? "primary" : "default"} sx={{ minHeight: 20, fontSize: '0.65rem', height: 'auto', opacity: cow.species ? 1 : 0.6 }} />
+                                            <Chip label={cow.sex || 'Sex N/A'} size="small" color={cow.sex ? "secondary" : "default"} sx={{ minHeight: 20, fontSize: '0.65rem', height: 'auto', opacity: cow.sex ? 1 : 0.6 }} />
+                                            {cow.sex === 'Female' && cow.currentStatus && (
+                                                <Chip
+                                                    label={cow.currentStatus}
+                                                    size="small"
+                                                    color={getStatusColor(cow.currentStatus) as "default" | "primary" | "secondary" | "error" | "info" | "success" | "warning"}
+                                                    sx={{ minHeight: 20, height: 'auto', fontSize: '0.65rem', fontWeight: 600 }}
+                                                />
+                                            )}
+                                        </Stack>
                                     </Box>
 
                                     <Stack direction="row" spacing={1} alignItems="center">
-                                        <Typography variant="caption" sx={{ bgcolor: 'grey.100', px: 0.8, py: 0.2, borderRadius: 1 }}>
-                                            #{cow.tagNumber}
+                                        <Typography variant="caption" sx={{ bgcolor: 'grey.100', px: 0.8, py: 0.2, borderRadius: 1, color: cow.tagNumber ? 'text.primary' : 'text.disabled', fontStyle: cow.tagNumber ? 'normal' : 'italic' }}>
+                                            #{cow.tagNumber || 'N/A'}
                                         </Typography>
                                         <Typography variant="caption" color="text.secondary">
-                                            {cow.breed} • {cow.ageYears ? `${cow.ageYears}y ` : ''}{cow.ageMonths ? `${cow.ageMonths}m` : 'Age unknown'}
+                                            {cow.breed || <span style={{ fontStyle: 'italic', opacity: 0.6 }}>Breed N/A</span>} • {(cow.ageYears || cow.ageMonths) ? `${cow.ageYears ? `${cow.ageYears}y ` : ''}${cow.ageMonths ? `${cow.ageMonths}m` : ''}` : <span style={{ fontStyle: 'italic', opacity: 0.6 }}>Age N/A</span>}
                                         </Typography>
                                     </Stack>
                                 </Box>

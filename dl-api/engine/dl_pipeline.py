@@ -1,6 +1,7 @@
 import cv2
 import torch
 import base64
+import zlib
 import requests
 import numpy as np
 from PIL import Image
@@ -20,7 +21,9 @@ if gpus:
     try:
         for gpu in gpus:
             tf.config.experimental.set_memory_growth(gpu, True)
-        print(f"Enabled dynamic memory growth on {len(gpus)} GPU(s).")
+        # Enable TensorFlow mixed precision for faster GPU inference
+        tf.keras.mixed_precision.set_global_policy('mixed_float16')
+        print(f"Enabled dynamic memory growth + mixed_float16 on {len(gpus)} GPU(s).")
     except RuntimeError as e:
         print(e)
 
@@ -48,11 +51,13 @@ def serialize_tensor(tensor) -> dict:
         if isinstance(tensor, (list, tuple)): return {"is_list": True, "value": list(tensor)}
         return tensor
     np_arr = tensor.cpu().numpy()
-    b64 = base64.b64encode(np_arr.tobytes()).decode('utf-8')
+    compressed = zlib.compress(np_arr.tobytes(), level=6)
+    b64 = base64.b64encode(compressed).decode('utf-8')
     return {
         "shape": list(np_arr.shape),
         "dtype": str(np_arr.dtype),
-        "data": b64
+        "data": b64,
+        "z": True  # Flag indicating zlib-compressed data
     }
 
 def deserialize_tensor(data: dict, device: str):
@@ -60,10 +65,10 @@ def deserialize_tensor(data: dict, device: str):
     if not isinstance(data, dict): return data
     if "is_list" in data: return torch.tensor(data["value"], device=device)
     if "data" not in data: return data
-    b64 = data["data"]
+    raw_bytes = zlib.decompress(base64.b64decode(data["data"]))
     shape = tuple(data["shape"])
     dtype = np.dtype(data["dtype"])
-    np_arr = np.frombuffer(base64.b64decode(b64), dtype=dtype).reshape(shape)
+    np_arr = np.frombuffer(raw_bytes, dtype=dtype).reshape(shape)
     return torch.from_numpy(np_arr.copy()).to(device)
 
 def apply_clahe(bgr_img: np.ndarray) -> np.ndarray:
@@ -127,13 +132,23 @@ class DLPipeline:
     # UPDATED: Now takes both face and muzzle yolo paths
     def __init__(self, yolo_face_path: str, yolo_muzzle_path: str, embedding_model_path: str, spoof_path: str = None):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.use_gpu = self.device == "cuda"
         print(f"Loading DL Models on {self.device.upper()}...")
+        
+        # GPU-specific optimizations
+        if self.use_gpu:
+            torch.backends.cudnn.benchmark = True          # Auto-tune conv algorithms for this GPU
+            torch.backends.cuda.matmul.allow_tf32 = True   # Allow TF32 for faster matrix multiplications
+            torch.backends.cudnn.allow_tf32 = True          # Allow TF32 in cuDNN convolutions
+            print("Enabled: cuDNN benchmark, TF32 matmul, TF32 cuDNN")
         
         self.yolo_face = YOLO(yolo_face_path)
         self.yolo_muzzle = YOLO(yolo_muzzle_path)
         
         self.embedding_model = MegaDescriptorModel(embedding_model_path).to(self.device)
         self.embedding_model.eval()
+        if self.use_gpu:
+            self.embedding_model.half()  # FP16 for ~2x throughput
         
         self.extractor = SuperPoint(max_num_keypoints=2048).eval().to(self.device)
         self.matcher = LightGlue(features='superpoint', depth_confidence=0.9, width_confidence=0.9).eval().to(self.device)
@@ -143,8 +158,22 @@ class DLPipeline:
             self.spoof_model = MuzzleSpoofDetector().to(self.device)
             self.spoof_model.load_state_dict(torch.load(spoof_path, map_location=self.device))
             self.spoof_model.eval()
+            if self.use_gpu:
+                self.spoof_model.half()  # FP16 for spoof detection
         
-        # UPDATED: PadToSquare, 384x384, and BVRA [0.5] Normalization
+        # torch.compile() — JIT-compile models for 20-50% faster inference (PyTorch 2.0+, Linux GPU only)
+        if self.use_gpu:
+            try:
+                self.embedding_model = torch.compile(self.embedding_model, mode="reduce-overhead")
+                self.extractor = torch.compile(self.extractor, mode="reduce-overhead")
+                self.matcher = torch.compile(self.matcher, mode="reduce-overhead")
+                if self.spoof_model:
+                    self.spoof_model = torch.compile(self.spoof_model, mode="reduce-overhead")
+                print("torch.compile() applied to all PyTorch models (reduce-overhead mode).")
+            except Exception as compile_err:
+                print(f"torch.compile() not available, continuing without it: {compile_err}")
+
+        # PadToSquare, 384x384, and BVRA [0.5] Normalization
         self.transform = transforms.Compose([
             PadToSquare(),
             transforms.Resize((384, 384)),
@@ -159,9 +188,9 @@ class DLPipeline:
         ])
 
         print(f"Loading Cow Classifier Model...")
-        # device=0 for CUDA if available, -1 for CPU
-        hf_device = 0 if self.device == "cuda" else -1
-        self.cow_classifier = pipeline("image-classification", model="google/vit-base-patch16-224", device=hf_device)
+        hf_device = 0 if self.use_gpu else -1
+        hf_dtype = torch.float16 if self.use_gpu else torch.float32
+        self.cow_classifier = pipeline("image-classification", model="google/vit-base-patch16-224", device=hf_device, torch_dtype=hf_dtype)
 
         print(f"Loading Spatial Attention Headless Models...")
         import os
@@ -172,6 +201,51 @@ class DLPipeline:
             print(f"Failed to load Spatial Attention models: {e}")
             self.headless_muzzle_model = None
             self.headless_face_model = None
+        
+        # CUDA Warmup — pre-allocate memory and compile lazy kernels so the first real request is fast
+        if self.use_gpu:
+            print("Running CUDA warmup pass...")
+            self._cuda_warmup()
+            print(f"GPU Optimization Summary: FP16 models, cuDNN benchmark, TF32 matmul, TF mixed_float16, torch.compile, CUDA warmup")
+        print(f"All models loaded on {self.device.upper()}.")
+
+    def _cuda_warmup(self):
+        """Run dummy inference through all models to pre-allocate CUDA memory and JIT-compile kernels."""
+        try:
+            # 1. MegaDescriptor warmup (384x384 FP16 input)
+            dummy_embed = torch.randn(1, 3, 384, 384, device=self.device, dtype=torch.float16)
+            with torch.inference_mode():
+                self.embedding_model.forward_once(dummy_embed)
+            
+            # 2. Spoof model warmup (224x224 FP16 input)
+            if self.spoof_model:
+                dummy_spoof = torch.randn(1, 3, 224, 224, device=self.device, dtype=torch.float16)
+                with torch.inference_mode():
+                    self.spoof_model(dummy_spoof)
+            
+            # 3. SuperPoint + LightGlue warmup (arbitrary image)
+            dummy_img = torch.randn(1, 3, 480, 640, device=self.device, dtype=torch.float32)
+            with torch.inference_mode(), torch.amp.autocast('cuda', enabled=True):
+                feats = self.extractor.extract(dummy_img)
+                self.matcher({'image0': feats, 'image1': feats})
+            
+            # 4. TensorFlow spatial model warmup
+            dummy_tf = np.random.rand(1, 224, 224, 3).astype(np.float32)
+            if self.headless_muzzle_model:
+                self.headless_muzzle_model(dummy_tf, training=False)
+            if self.headless_face_model:
+                self.headless_face_model(dummy_tf, training=False)
+            
+            # 5. HuggingFace ViT warmup
+            dummy_pil = Image.fromarray(np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8))
+            self.cow_classifier(dummy_pil)
+            
+            # Flush any leftover allocations
+            torch.cuda.empty_cache()
+            print("CUDA warmup complete — all models primed.")
+        except Exception as e:
+            print(f"CUDA warmup failed (non-fatal): {e}")
+            torch.cuda.empty_cache()
 
     def prepare_spatial_input(self, crop: np.ndarray) -> np.ndarray:
         if crop is None:
@@ -240,7 +314,7 @@ class DLPipeline:
         if image is None: return None, 0.0
         
         model = self.yolo_face if part_type == "face" else self.yolo_muzzle
-        results = model.predict(source=image, imgsz=640, conf=min_conf, device=self.device, verbose=False)
+        results = model.predict(source=image, imgsz=640, conf=min_conf, device=self.device, half=self.use_gpu, verbose=False)
         r = results[0]
         
         if r.boxes is None or len(r.boxes.xyxy) == 0:
@@ -269,7 +343,6 @@ class DLPipeline:
     def get_embeddings_batch(self, cropped_images: list[np.ndarray]) -> list[list[float]]:
         if not cropped_images:
             return []
-  
             
         tensors = []
         for img in cropped_images:
@@ -279,11 +352,13 @@ class DLPipeline:
             
         # Batch inference: Stack all images into a single Tensor [N, C, H, W]
         batch_tensor = torch.stack(tensors).to(self.device)
+        if self.use_gpu:
+            batch_tensor = batch_tensor.half()  # Match FP16 model weights
         
-        with torch.no_grad():
+        with torch.inference_mode():
             embeddings = self.embedding_model.forward_once(batch_tensor)
             
-        return embeddings.cpu().numpy().tolist()
+        return embeddings.float().cpu().numpy().tolist()
         
     def is_spoof(self, image: np.ndarray) -> tuple[bool, float]:
         if self.spoof_model is None or image is None:
@@ -293,12 +368,12 @@ class DLPipeline:
         img_pil = Image.fromarray(img_rgb)
         
         tensor_img = self.spoof_transform(img_pil).unsqueeze(0).to(self.device)
+        if self.use_gpu:
+            tensor_img = tensor_img.half()  # Match FP16 model weights
         
-        with torch.no_grad():
+        with torch.inference_mode():
             output = self.spoof_model(tensor_img)
-            probs = torch.nn.functional.softmax(output, dim=1)
-            # Assuming class 0 = Live, class 1 = Spoof
-            # If probability of spoof > 0.5, return True
+            probs = torch.nn.functional.softmax(output.float(), dim=1)  # Softmax in FP32 for numerical stability
             spoof_prob = probs[0][1].item()
             print(f"Spoof probability: {spoof_prob}")
             
@@ -319,7 +394,7 @@ class DLPipeline:
             best_m = None
             best_kpts0, best_kpts1 = None, None
             
-            with torch.no_grad():
+            with torch.inference_mode(), torch.amp.autocast('cuda', enabled=self.use_gpu):
                 for live_feats in live_feats_list:
                     matches = self.matcher({'image0': live_feats, 'image1': cand_feats})
                     m = matches['matches'][0]
@@ -368,7 +443,7 @@ class DLPipeline:
         tensor = self._prepare_tensor_for_lightglue(crop)
         if tensor is None: return None
         
-        with torch.no_grad():
+        with torch.inference_mode(), torch.amp.autocast('cuda', enabled=self.use_gpu):
             feats = self.extractor.extract(tensor)
             
         return {

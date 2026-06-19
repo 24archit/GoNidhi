@@ -130,7 +130,8 @@ export const getAllCattle = async (req: Request, res: Response) => {
             .populate('farmerId', 'name contact.phone location')
             .sort(sortOptions)
             .skip(skip)
-            .limit(limit);
+            .limit(limit)
+            .lean();
 
         const total = await Cattle.countDocuments(query);
 
@@ -162,7 +163,8 @@ export const getPendingCattle = async (req: Request, res: Response) => {
             .populate('farmerId', 'name contact.phone location')
             .sort({ createdAt: -1 })
             .skip(skip)
-            .limit(limit);
+            .limit(limit)
+            .lean();
 
         const total = await Cattle.countDocuments(query);
 
@@ -273,7 +275,7 @@ export const proxyRegisterCow = async (req: Request, res: Response) => {
                 damTag,
                 source,
                 purchaseDetails: source === 'Purchase' ? {
-                    date: purchaseDate,
+                    date: purchaseDate || undefined,
                     price: purchasePrice ? Number(purchasePrice) : undefined
                 } : undefined,
                 isInformationCorrectAgreement: true,
@@ -288,11 +290,11 @@ export const proxyRegisterCow = async (req: Request, res: Response) => {
                     selfie: selfieCloudinary
                 },
                 aiMetadata: { isRegistered: false, status: 'PENDING' },
-                currentStatus: productionStatus,
+                currentStatus: productionStatus || undefined,
                 healthStats: {
                     birthWeight: birthWeight ? Number(birthWeight) : undefined,
                     motherWeightAtCalving: motherWeightAtCalving ? Number(motherWeightAtCalving) : undefined,
-                    healthStatus,
+                    healthStatus: healthStatus || undefined,
                     calvingCounter: calvingCounter ? Number(calvingCounter) : undefined
                 }
             });

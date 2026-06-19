@@ -26,12 +26,7 @@ const OfflineSync: React.FC = () => {
         void loadCows();
     }, []);
 
-    const handleSyncNow = async () => {
-        setSyncing(true);
-        await syncManager.syncAll();
-        await loadCows();
-        setSyncing(false);
-    };
+
 
     const handleDelete = async () => {
         if (deleteId) {
@@ -50,15 +45,6 @@ const OfflineSync: React.FC = () => {
         <Box sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                 <Typography variant="h6" fontWeight="bold">Offline Sync</Typography>
-                <Button
-                    variant="contained"
-                    startIcon={syncing ? <CircularProgress size={20} color="inherit" /> : <CloudSync />}
-                    onClick={handleSyncNow}
-                    disabled={syncing || cows.length === 0 || !navigator.onLine}
-                    sx={{ borderRadius: 6 }}
-                >
-                    Sync Now
-                </Button>
             </Box>
 
             {!loading && cows.length > 0 && (
@@ -184,7 +170,7 @@ const OfflineSync: React.FC = () => {
                                     <Divider sx={{ my: 2, borderStyle: 'dashed' }} />
 
                                     {/* Actions */}
-                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
                                         <Button
                                             color="inherit"
                                             startIcon={<DeleteOutline />}
@@ -193,17 +179,15 @@ const OfflineSync: React.FC = () => {
                                         >
                                             Discard
                                         </Button>
-                                        {isFailed && (
-                                            <Button
-                                                variant="contained"
-                                                color="primary"
-                                                startIcon={<Edit />}
-                                                onClick={() => handleEdit(cow)}
-                                                sx={{ borderRadius: 6, px: 3, fontWeight: 700, boxShadow: 'none' }}
-                                            >
-                                                Edit & Retry
-                                            </Button>
-                                        )}
+                                        <Button
+                                            variant="contained"
+                                            color="primary"
+                                            startIcon={isFailed ? <Edit /> : <CloudSync />}
+                                            onClick={() => handleEdit(cow)}
+                                            sx={{ borderRadius: 6, px: 3, fontWeight: 700, boxShadow: 'none' }}
+                                        >
+                                            {isFailed ? 'Edit & Retry' : 'Review & Sync'}
+                                        </Button>
                                     </Box>
                                 </Box>
                             </Paper>

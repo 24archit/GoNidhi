@@ -79,19 +79,9 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             }
         });
 
-        // Upload when coming online
-        const handleOnline = async () => {
-            const result = await syncManager.syncAll();
-            if (result.success && result.syncedCount > 0) {
-                setPendingCount(0);
-            }
-        };
-
-        window.addEventListener('online', handleOnline);
         return () => {
             clearInterval(interval);
             appStateListener.then(listener => listener.remove());
-            window.removeEventListener('online', handleOnline);
         };
     }, []);
 

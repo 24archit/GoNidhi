@@ -1,8 +1,9 @@
 import time
+import asyncio
 from fastapi import Request, HTTPException
 
 from core import globals as glb
-from services.image_service import download_image, encode_crop
+from services.image_service import download_image, encode_crop, upload_crop_to_cloudinary, delete_image_from_cloudinary
 from schemas import SearchRequest
 from services.fusion_service import compute_cosine_similarity, evaluate_biometric_match
 from services.tournament_service import run_biometric_tournament, compute_traditional_metrics
@@ -20,6 +21,14 @@ async def search_cow_safe(req: SearchRequest, fastapi_req: Request):
         raise
     except Exception as e:
         traceback.print_exc()
+        
+        # Clean up any successfully uploaded crops if the AI pipeline crashed
+        for task in getattr(req, "_upload_tasks", []):
+            try:
+                url = await task
+                if url: delete_image_from_cloudinary(url)
+            except: pass
+            
         raise HTTPException(status_code=500, detail="Internal Server Error: An unexpected error occurred during the search process.")
     finally:
         glb.gpu_queue_size -= 1
@@ -115,7 +124,7 @@ async def _search_cow_impl(req: SearchRequest, fastapi_req: Request):
         
     if not is_cow_muzzle or not is_cow_face:
          m_status = "NOT_A_COW"
-         detail = "Uploaded images do not appear to contain a cow."
+         detail = "We couldn't detect a cow. Please ensure the cow is clearly visible and the photos are well-lit before trying again."
          _raise_early_search_error(m_status, detail, req, start_time, spoof_prob_muzzle, spoof_prob_face)
          
     if await fastapi_req.is_disconnected():
@@ -127,9 +136,24 @@ async def _search_cow_impl(req: SearchRequest, fastapi_req: Request):
         face_crop, face_conf = (glb.dl.extract_biometric(face_img, part_type="face") if face_img is not None else (None, 0.0))
         face_muzzle_crop, face_muzzle_conf = (glb.dl.extract_biometric(face_img, part_type="muzzle") if face_img is not None else (None, 0.0))
         
+    muzzle_upload_task = None
+    face_upload_task = None
+    face_muzzle_upload_task = None
+
+    req._upload_tasks = []
+    if muzzle_crop is not None:
+        muzzle_upload_task = asyncio.create_task(asyncio.to_thread(upload_crop_to_cloudinary, muzzle_crop["clahe"]))
+        req._upload_tasks.append(muzzle_upload_task)
+    if face_crop is not None:
+        face_upload_task = asyncio.create_task(asyncio.to_thread(upload_crop_to_cloudinary, face_crop["clahe"]))
+        req._upload_tasks.append(face_upload_task)
+    if face_muzzle_crop is not None:
+        face_muzzle_upload_task = asyncio.create_task(asyncio.to_thread(upload_crop_to_cloudinary, face_muzzle_crop["clahe"]))
+        req._upload_tasks.append(face_muzzle_upload_task)
+
     if muzzle_crop is None and face_crop is None and face_muzzle_crop is None:
          m_status = "NO_BIOMETRICS_DETECTED"
-         detail = "Could not detect either a Face or Muzzle in search images."
+         detail = "We couldn't detect the face or muzzle. Please retake the photos close-up, ensuring the cow's face is fully in the frame."
          _raise_early_search_error(m_status, detail, req, start_time, spoof_prob_muzzle, spoof_prob_face)
          
     if await fastapi_req.is_disconnected():
@@ -237,8 +261,9 @@ async def _search_cow_impl(req: SearchRequest, fastapi_req: Request):
     
     trad_metrics = compute_traditional_metrics(muzzle_crop, matched_image_url) if muzzle_crop is not None else {}
     
-    muzzle_crop_b64 = encode_crop(muzzle_crop["clahe"]) if muzzle_crop is not None else None
-    face_crop_b64 = encode_crop(face_crop["clahe"]) if face_crop is not None else None
+    muzzle_crop_url = await muzzle_upload_task if 'muzzle_upload_task' in locals() and muzzle_upload_task else None
+    face_crop_url = await face_upload_task if 'face_upload_task' in locals() and face_upload_task else None
+    face_muzzle_crop_url = await face_muzzle_upload_task if 'face_muzzle_upload_task' in locals() and face_muzzle_upload_task else None
     
     face_sim_score = face_match.get("similarity") if 'face_match' in locals() and face_match else (f_candidates[0].get("similarity") if 'f_candidates' in locals() and f_candidates else best_face_sim)
     muzzle_sim_score = best_features.get("muzzle_sim") if 'best_features' in locals() and best_features else (matched_candidate.get("similarity") if 'matched_candidate' in locals() and matched_candidate else best_muzzle_sim)
@@ -251,11 +276,11 @@ async def _search_cow_impl(req: SearchRequest, fastapi_req: Request):
         inference_time=inference_time,
         final_confidence=final_confidence,
         matched_cow_id=matched_cow_id,
-        num_crops=sum(x is not None for x in [muzzle_crop, face_crop, face_muzzle_crop]),
+        num_crops=sum(x is not None for x in [muzzle_crop_url, face_crop_url, face_muzzle_crop_url]),
         muzzle_url=req.muzzle_image_url,
         face_url=req.face_image_url,
-        muzzle_crop_b64=muzzle_crop_b64,
-        face_crop_b64=face_crop_b64,
+        muzzle_crop_b64=muzzle_crop_url,
+        face_crop_b64=face_crop_url,
         muzzle_conf=muzzle_conf,
         face_conf=face_conf,
         spoof_prob_muzzle=spoof_prob_muzzle,

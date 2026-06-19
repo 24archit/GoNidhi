@@ -139,7 +139,15 @@ const CowProfile: React.FC = () => {
                         background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)',
                         p: 3, pt: 8, color: 'white'
                     }}>
-                        <Typography variant="h4" fontWeight={800}>{cowData?.name}</Typography>
+                        <Typography variant="h4" fontWeight={800} sx={{
+                            wordBreak: 'break-word',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden'
+                        }}>
+                            {cowData?.name}
+                        </Typography>
                         <Typography variant="body2" sx={{ opacity: 0.9 }}>Tag #{cowData?.tagNumber} • {cowData?.breed}</Typography>
                     </Box>
                 </Box>
@@ -209,11 +217,20 @@ const CowProfile: React.FC = () => {
                                             label="⚠️ DISPUTED OWNERSHIP"
                                             color="error"
                                             size="small"
-                                            sx={{ fontWeight: 'bold', animation: 'pulse 1.5s infinite' }}
+                                            sx={{ fontWeight: 'bold', animation: 'pulse 1.5s infinite', height: 'auto', py: 0.5 }}
                                         />
                                     )}
-                                    <Chip label={cowData?.currentStatus || 'Unknown'} color="success" size="small" icon={<WaterDrop />} />
-                                    <Chip label={cowData?.healthStats?.healthStatus || 'Tracking'} variant="outlined" size="small" color="info" />
+                                    <Chip label={cowData?.species || 'Unknown'} color="primary" size="small" sx={{ height: 'auto', py: 0.5 }} />
+                                    <Chip 
+                                        label={cowData?.sex || 'Unknown'} 
+                                        color="secondary" 
+                                        size="small" 
+                                        icon={cowData?.sex === 'Female' ? <Female /> : <Male />} 
+                                        sx={{ height: 'auto', py: 0.5 }}
+                                    />
+                                    {cowData?.sex === 'Female' && cowData?.currentStatus && (
+                                        <Chip label={cowData.currentStatus} color="success" size="small" icon={<WaterDrop />} sx={{ height: 'auto', py: 0.5 }} />
+                                    )}
                                 </Stack>
 
                                 {/* SECTION 1: GENERAL / OWNER */}
@@ -231,22 +248,26 @@ const CowProfile: React.FC = () => {
                                 <Typography variant="overline" color="text.secondary" fontWeight="bold">ANIMAL DETAILS</Typography>
                                 <List dense>
                                     <ListItem disablePadding sx={{ mb: 1 }}>
+                                        <ListItemAvatar><Avatar sx={{ bgcolor: 'success.light', color: 'success.main' }}><LocalOffer /></Avatar></ListItemAvatar>
+                                        <ListItemText primary="Name" secondary={cowData?.name || 'N/A'} />
+                                    </ListItem>
+                                    <ListItem disablePadding sx={{ mb: 1 }}>
                                         <ListItemAvatar><Avatar sx={{ bgcolor: 'primary.light', color: 'primary.main' }}><QrCodeScanner /></Avatar></ListItemAvatar>
-                                        <ListItemText primary="Identity" secondary={`Tag: ${cowData?.tagNumber} | Source: ${cowData?.source}`} />
+                                        <ListItemText primary="Identity" secondary={`Tag: ${cowData?.tagNumber || 'N/A'} | Source: ${cowData?.source || 'N/A'}`} />
                                     </ListItem>
                                     <ListItem disablePadding sx={{ mb: 1 }}>
                                         <ListItemAvatar>
                                             <Avatar sx={{ bgcolor: 'info.light', color: 'info.main' }}>{cowData?.sex === 'Female' ? <Female /> : <Male />}</Avatar>
                                         </ListItemAvatar>
-                                        <ListItemText primary="Species / Sex" secondary={`${cowData?.species} / ${cowData?.sex}`} />
+                                        <ListItemText primary="Species / Sex" secondary={`${cowData?.species || 'N/A'} / ${cowData?.sex || 'N/A'}`} />
                                     </ListItem>
                                     <ListItem disablePadding sx={{ mb: 1 }}>
                                         <ListItemAvatar><Avatar sx={{ bgcolor: 'warning.light', color: 'warning.main' }}><LocalOffer /></Avatar></ListItemAvatar>
-                                        <ListItemText primary="Breed" secondary={cowData?.breed} />
+                                        <ListItemText primary="Breed" secondary={cowData?.breed || 'N/A'} />
                                     </ListItem>
                                     <ListItem disablePadding sx={{ mb: 1 }}>
                                         <ListItemAvatar><Avatar sx={{ bgcolor: 'secondary.light', color: 'secondary.main' }}><Cake /></Avatar></ListItemAvatar>
-                                        <ListItemText primary="Age" secondary={`${cowData?.ageYears ? `${cowData.ageYears}y ` : ''}${cowData?.ageMonths ? `${cowData.ageMonths}m` : 'Unknown'}`} />
+                                        <ListItemText primary="Age" secondary={`${cowData?.ageYears ? `${cowData.ageYears}y ` : ''}${cowData?.ageMonths ? `${cowData.ageMonths}m` : ''}`.trim() || 'N/A'} />
                                     </ListItem>
                                 </List>
 
@@ -263,14 +284,20 @@ const CowProfile: React.FC = () => {
                                         <ListItemAvatar><Avatar sx={{ bgcolor: 'grey.300', color: 'grey.800' }}><Scale /></Avatar></ListItemAvatar>
                                         <ListItemText
                                             primary="Birth Metrics"
-                                            secondary={`Birth Wt: ${cowData?.healthStats?.birthWeight || '--'}kg | Mother's Wt: ${cowData?.healthStats?.motherWeightAtCalving || '--'}kg`}
+                                            secondary={`Birth Wt: ${cowData?.healthStats?.birthWeight ? `${cowData.healthStats.birthWeight}kg` : 'N/A'} | Mother's Wt: ${cowData?.healthStats?.motherWeightAtCalving ? `${cowData.healthStats.motherWeightAtCalving}kg` : 'N/A'}`}
                                         />
                                     </ListItem>
                                     <ListItem disablePadding sx={{ mb: 1 }}>
                                         <ListItemAvatar><Avatar sx={{ bgcolor: 'primary.light', color: 'primary.main' }}><MonitorWeight /></Avatar></ListItemAvatar>
                                         <ListItemText 
-                                            primary="Current Stats" 
-                                            secondary={`Reproduction: ${cowData?.sex === 'Female' ? cowData.currentStatus : 'N/A'}${cowData?.healthStats?.calvingCounter ? ` | Calvings: ${cowData.healthStats.calvingCounter}` : ''}`} 
+                                            primary="Health & Reproduction" 
+                                            secondary={
+                                                <React.Fragment>
+                                                    Condition: {cowData?.healthStats?.healthStatus || 'N/A'}<br/>
+                                                    Reproduction: {cowData?.sex === 'Female' ? cowData?.currentStatus || 'N/A' : 'N/A'}<br/>
+                                                    Calvings: {cowData?.sex === 'Female' ? cowData?.healthStats?.calvingCounter ?? '0' : 'N/A'}
+                                                </React.Fragment>
+                                            } 
                                         />
                                     </ListItem>
                                 </List>

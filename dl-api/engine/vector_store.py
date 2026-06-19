@@ -4,7 +4,8 @@ from typing import List, Dict, Any, Optional, Union
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import (
     Distance, VectorParams, PointStruct, Filter, FieldCondition,
-    MatchValue, MatchAny, SearchParams, OptimizersConfigDiff, HnswConfigDiff
+    MatchValue, MatchAny, SearchParams, OptimizersConfigDiff, HnswConfigDiff,
+    ScalarQuantization, ScalarQuantizationConfig, ScalarType
 )
 from collections import defaultdict
 
@@ -33,6 +34,14 @@ class CattleVectorStore:
                     },
                     optimizers_config=OptimizersConfigDiff(indexing_threshold=10_000),
                     hnsw_config=HnswConfigDiff(m=32, ef_construct=200),
+                    quantization_config=ScalarQuantization(
+                        scalar=ScalarQuantizationConfig(
+                            type=ScalarType.INT8,
+                            quantile=0.99,
+                            always_ram=True
+                        )
+                    ),
+                    on_disk_payload=True,
                 )
             else:
                 print("Collection found and ready.")
@@ -55,7 +64,6 @@ class CattleVectorStore:
         cow_name: str = None,
         image_url: str = None,
         superpoint_cache: dict = None,
-        muzzle_crop_b64: str = None,
     ):
         vector_dict = {k: v for k, v in embeddings.items() if v is not None}
         vector_id = str(uuid.uuid5(uuid.NAMESPACE_OID, f"{cow_id}_{source}"))
@@ -69,8 +77,6 @@ class CattleVectorStore:
         }
         if superpoint_cache:
             payload["superpoint_cache"] = superpoint_cache
-        if muzzle_crop_b64:
-            payload["muzzle_crop_b64"] = muzzle_crop_b64
 
         try:
             self._upsert(vector_id, vector_dict, payload)
@@ -239,7 +245,6 @@ class CattleVectorStore:
                 "cow_name":         hit.payload.get("cow_name"),
                 "image_url":        hit.payload.get("image_url"),
                 "superpoint_cache": hit.payload.get("superpoint_cache"),
-                "muzzle_crop_b64":  hit.payload.get("muzzle_crop_b64"),
                 "similarity":       float(cow_best_score[cid]),
                 "z_norm_score":     float(cow_znorm_score[cid]),
                 "rrf_score":        float(cow_rrf_score[cid]),

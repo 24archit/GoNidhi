@@ -41,7 +41,6 @@ export interface ICattle extends Document {
         confidenceScore?: number;
         lastScannedAt?: Date;
     };
-    superpointCache?: any;
     isInformationCorrectAgreement: boolean;
 
     // Health Status
@@ -64,8 +63,8 @@ const CattleSchema = new Schema<ICattle>({
     species: { type: String, enum: ['Cow', 'Buffalo'], required: true },
     breed: { type: String },
     sex: { type: String, enum: ['Male', 'Female', 'Freemartin'], required: true },
-    ageYears: { type: Number },
-    ageMonths: { type: Number },
+    ageYears: { type: Number, min: 0 },
+    ageMonths: { type: Number, min: 0, max: 11 },
 
     sireTag: { type: String, default: null },
     damTag: { type: String, default: null },
@@ -95,7 +94,6 @@ const CattleSchema = new Schema<ICattle>({
         confidenceScore: Number,
         lastScannedAt: Date
     },
-    superpointCache: { type: Schema.Types.Mixed },
     isInformationCorrectAgreement: { type: Boolean, required: true },
 
     currentStatus: {

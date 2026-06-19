@@ -1,8 +1,8 @@
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import axios from 'axios';
 import {
     Container, Box, TextField, IconButton, Typography,
-    Paper, Avatar, Chip, Button, Stack, LinearProgress,
+    Paper, Avatar, Chip, Button, Stack,
     Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Skeleton,
     Divider, Fade
 } from '@mui/material';
@@ -55,15 +55,7 @@ function useSearchHistory() {
     return { history, addHistory };
 }
 
-const performSearch = (cows: CowListSummary[], term: string) => {
-    const t = term.trim().toLowerCase();
-    if (!t) return [];
-    return cows.filter(c =>
-        (c.tagNumber || '').toLowerCase() === t ||
-        (c.name || '').toLowerCase().includes(t) ||
-        (c.breed || '').toLowerCase().includes(t)
-    );
-};
+
 
 const getStatusColor = (status: string): 'error' | 'warning' | 'info' | 'default' | 'success' => {
     switch (status) {
@@ -293,17 +285,17 @@ const ScanTab = ({ isAdmin }: { isAdmin?: boolean }) => {
     const handleSearch = async () => {
         if (!muzzleImage || !faceImage) return;
         const signal = startProcessing(
-            'Finding Cattle', 
-            'Uploading biometrics…', 
-            false, 
+            'Finding Cattle',
+            'Uploading biometrics…',
+            false,
             'Please be patient and do not close the app. This secure API search process may take about 10-12 minutes to analyze and match across the national database.'
         );
         updateProgress(15);
 
         try {
             const payload = {
-                faceImage: base64ToFile(faceImage, 'search_face.jpg'),
-                muzzleImage: base64ToFile(muzzleImage, 'search_muzzle.jpg')
+                faceImage: base64ToFile(faceImage, 'search_face.webp'),
+                muzzleImage: base64ToFile(muzzleImage, 'search_muzzle.webp')
             };
 
             await new Promise(r => window.setTimeout(r, 600)); // UX delay for realism
@@ -316,8 +308,8 @@ const ScanTab = ({ isAdmin }: { isAdmin?: boolean }) => {
             if (!token) throw new Error('Not authenticated');
 
             const formData = new FormData();
-            formData.append('faceImage', payload.faceImage);
-            formData.append('muzzleImage', payload.muzzleImage);
+            formData.append('faceImage', payload.faceImage as Blob);
+            formData.append('muzzleImage', payload.muzzleImage as Blob);
 
             const endpoint = isAdmin ? '/api/admin/cattle/proxy-search' : '/api/farmer/cattle/search';
             const res = await axios.post(`${API_BASE}${endpoint}`, formData, {
@@ -618,7 +610,7 @@ const SearchTab = ({ isAdmin }: { isAdmin?: boolean }) => {
                                 <Typography variant="caption" color="text.disabled">Try the Tag Number, Name, or use AI Scan</Typography>
                             </Box>
                         ) : (
-                            filteredCows.map(cow => (
+                            filteredCows.map((cow: CowListSummary) => (
                                 <Paper
                                     key={cow._id} elevation={0}
                                     onClick={() => navigate(isAdmin ? `/cattle/${cow._id}` : `/profile/${cow._id}`)}
@@ -635,16 +627,22 @@ const SearchTab = ({ isAdmin }: { isAdmin?: boolean }) => {
                                         sx={{ width: 56, height: 56, borderRadius: 2, bgcolor: '#E8F5E9' }}
                                     />
                                     <Box sx={{ flex: 1, minWidth: 0 }}>
-                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.4 }}>
-                                            <Typography variant="subtitle2" fontWeight={800} noWrap>{cow.name || 'Unnamed'}</Typography>
+                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.4, gap: 1 }}>
+                                            <Typography variant="subtitle2" fontWeight={800} noWrap sx={{ minWidth: 0, flex: 1 }}>
+                                                {cow.name ? cow.name : <Typography component="span" sx={{ fontStyle: 'italic', color: 'text.disabled', fontSize: 'inherit', fontWeight: 'inherit' }}>Unnamed</Typography>}
+                                            </Typography>
                                             <Chip label={cow.currentStatus} size="small" color={getStatusColor(cow.currentStatus)}
-                                                sx={{ height: 18, fontSize: '0.65rem', fontWeight: 700, ml: 1 }} />
+                                                sx={{ minHeight: 18, height: 'auto', fontSize: '0.65rem', fontWeight: 700, flexShrink: 0 }} />
                                         </Box>
                                         <Stack direction="row" spacing={0.8} alignItems="center">
                                             <Tag sx={{ fontSize: 12, color: 'text.disabled' }} />
-                                            <Typography variant="caption" color="text.secondary" fontWeight={600}>{cow.tagNumber || '—'}</Typography>
+                                            <Typography variant="caption" color={cow.tagNumber ? 'text.secondary' : 'text.disabled'} fontWeight={cow.tagNumber ? 600 : 400} fontStyle={cow.tagNumber ? 'normal' : 'italic'}>
+                                                {cow.tagNumber || 'N/A'}
+                                            </Typography>
                                             <Typography variant="caption" color="text.disabled">·</Typography>
-                                            <Typography variant="caption" color="text.secondary">{cow.breed}</Typography>
+                                            <Typography variant="caption" color={cow.breed ? "text.secondary" : "text.disabled"} fontStyle={cow.breed ? 'normal' : 'italic'}>
+                                                {cow.breed || 'Breed N/A'}
+                                            </Typography>
                                         </Stack>
                                     </Box>
                                     <ArrowForwardIos sx={{ fontSize: 12, color: '#BDBDBD', flexShrink: 0 }} />
@@ -678,12 +676,12 @@ const SearchCow: React.FC<{ isAdmin?: boolean }> = ({ isAdmin }) => {
     // Explicitly show blocking overlay while models load
     useEffect(() => {
         let isMounted = true;
-        
+
         const loadModels = async () => {
             startProcessing(
-                'Initializing AI...', 
-                'Warming up Neural Engines...', 
-                true, 
+                'Initializing AI...',
+                'Warming up Neural Engines...',
+                true,
                 'Please be patient. This one-time process may take about 2-3 minutes to securely compile the advanced AI models onto your device.'
             );
             try {
@@ -697,7 +695,7 @@ const SearchCow: React.FC<{ isAdmin?: boolean }> = ({ isAdmin }) => {
                 if (isMounted) stopProcessing();
             }
         };
-        
+
         // Wait 100ms for UI to render first
         const timer = setTimeout(loadModels, 100);
 

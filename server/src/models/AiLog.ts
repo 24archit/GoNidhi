@@ -9,7 +9,6 @@ export interface IAiLog extends Document {
     farmerId?: string;
     matchedCowId?: string;
     inferenceTimeMs: number;
-    imageF?: string; // Optional field for base64 images if needed in future
     muzzleConfM?: number;
     muzzleConfF?: number;
     spoofProbM?: number;
@@ -58,7 +57,6 @@ const AiLogSchema = new Schema<IAiLog>({
     farmerId: { type: String },
     matchedCowId: { type: String },
     inferenceTimeMs: { type: Number, required: true },
-    imageF: { type: String, select: false },
     muzzleConfM: { type: Number },
     muzzleConfF: { type: Number },
     spoofProbM: { type: Number },
@@ -97,5 +95,6 @@ const AiLogSchema = new Schema<IAiLog>({
 }, { timestamps: true });
 
 AiLogSchema.index({ timestamp: -1 });
+AiLogSchema.index({ matchStatus: 1, endpoint: 1, timestamp: -1 }); // Compound index for analytics
 
 export const AiLog = mongoose.model<IAiLog>('AiLog', AiLogSchema, 'mllogs');

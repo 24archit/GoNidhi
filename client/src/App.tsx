@@ -179,14 +179,8 @@ const App: React.FC = () => {
 
     window.addEventListener('auth-change', checkAppState);
 
-    // Background sync on app load & when online
-    syncManager.syncAll();
-    const handleOnline = () => syncManager.syncAll();
-    window.addEventListener('online', handleOnline);
-
     return () => {
       window.removeEventListener('auth-change', checkAppState);
-      window.removeEventListener('online', handleOnline);
     };
   }, []);
 

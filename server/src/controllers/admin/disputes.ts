@@ -24,7 +24,8 @@ export const getDisputes = async (req: Request, res: Response) => {
             .populate('attemptingFarmerId', 'name contact.phone location')
             .sort({ createdAt: -1 })
             .skip(skip)
-            .limit(limit);
+            .limit(limit)
+            .lean();
 
         const total = await Dispute.countDocuments(query);
 
