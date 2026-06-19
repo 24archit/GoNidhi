@@ -35,7 +35,16 @@ export const updateUserProfile = async (req: any, res: Response) => {
 
         const updateData: any = {};
         if (name) updateData.name = name;
-        if (phone) updateData['contact.phone'] = phone; // Assuming phone allows updates; consider index/uniqueness
+        
+        if (phone) {
+            // Check if another user already has this phone number
+            const existingUser = await User.findOne({ 'contact.phone': phone, _id: { $ne: userId } }).select('_id').lean();
+            if (existingUser) {
+                return res.status(409).json({ success: false, message: 'This phone number is already registered to another account.' });
+            }
+            updateData['contact.phone'] = phone;
+        }
+
         if (profilePicture !== undefined) updateData.profilePicture = profilePicture;
 
         // Location updates
