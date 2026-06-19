@@ -168,7 +168,7 @@ class DLPipeline:
                 self.embedding_model = torch.compile(self.embedding_model, mode="max-autotune")
                 self.extractor = torch.compile(self.extractor, mode="max-autotune")
                 self.matcher = torch.compile(self.matcher, mode="max-autotune")
-                if self.spoof_model:
+                if self.spoof_model is not None:
                     self.spoof_model = torch.compile(self.spoof_model, mode="max-autotune")
                 print("torch.compile() applied to all PyTorch models (max-autotune mode).")
             except Exception as compile_err:
@@ -219,7 +219,7 @@ class DLPipeline:
                 self.embedding_model.forward_once(dummy_embed)
             
             # 2. Spoof model warmup (224x224 FP16 input)
-            if self.spoof_model:
+            if self.spoof_model is not None:
                 dummy_spoof = torch.randn(1, 3, 224, 224, device=self.device, dtype=torch.float16)
                 with torch.inference_mode():
                     self.spoof_model(dummy_spoof)
