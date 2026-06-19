@@ -268,13 +268,19 @@ async def _process_registration_impl(payload: dict, upload_tasks: list, notify_w
             print(f"Registration rejected. Is a duplicate of {matched_cow_id} ({verdict.get('developer_reason', verdict.get('reason'))})")
         else:
             match_status = "SUCCESS"
+            
+            # Wait for crop uploads to finish so we can store the crop_url in Qdrant
+            muzzle_crop_url = await muzzle_upload_task if 'muzzle_upload_task' in locals() and muzzle_upload_task else None
+            face_crop_url = await face_upload_task if 'face_upload_task' in locals() and face_upload_task else None
+            face_muzzle_crop_url = await face_muzzle_upload_task if 'face_muzzle_upload_task' in locals() and face_muzzle_upload_task else None
+
             try:
                 if muzzle_emb or spatial_muzzle_emb: 
-                    glb.db.add_embedding({"megadescriptor": muzzle_emb, "spatial_muzzle": spatial_muzzle_emb}, cow_id, farmer_id, source="muzzle", cow_name=cow_name, image_url=muzzle_url, superpoint_cache=muzzle_superpoint_cache)
+                    glb.db.add_embedding({"megadescriptor": muzzle_emb, "spatial_muzzle": spatial_muzzle_emb}, cow_id, farmer_id, source="muzzle", cow_name=cow_name, image_url=muzzle_url, crop_url=muzzle_crop_url, superpoint_cache=muzzle_superpoint_cache)
                 if face_muzzle_emb or spatial_face_muzzle_emb:
-                    glb.db.add_embedding({"megadescriptor": face_muzzle_emb, "spatial_muzzle": spatial_face_muzzle_emb}, cow_id, farmer_id, source="face_muzzle", cow_name=cow_name, image_url=face_url, superpoint_cache=face_muzzle_superpoint_cache)
+                    glb.db.add_embedding({"megadescriptor": face_muzzle_emb, "spatial_muzzle": spatial_face_muzzle_emb}, cow_id, farmer_id, source="face_muzzle", cow_name=cow_name, image_url=face_url, crop_url=face_muzzle_crop_url, superpoint_cache=face_muzzle_superpoint_cache)
                 if face_emb or spatial_face_emb: 
-                    glb.db.add_embedding({"megadescriptor": face_emb, "spatial_face": spatial_face_emb}, cow_id, farmer_id, source="face", cow_name=cow_name, image_url=face_url)
+                    glb.db.add_embedding({"megadescriptor": face_emb, "spatial_face": spatial_face_emb}, cow_id, farmer_id, source="face", cow_name=cow_name, image_url=face_url, crop_url=face_crop_url)
                 print(f"Successfully registered new cow {cow_id}. Not a duplicate.")
             except Exception as insertion_error:
                 print(f"Failed during vector insertion for cow {cow_id}. Rolling back: {insertion_error}")
@@ -287,10 +293,12 @@ async def _process_registration_impl(payload: dict, upload_tasks: list, notify_w
     inference_time = (time.time() - start_time) * 1000
     
     trad_metrics = compute_traditional_metrics(muzzle_crop, matched_image_url) if 'muzzle_crop' in locals() else {}
-    # Wait for uploads to finish concurrently if they exist
-    muzzle_crop_url = await muzzle_upload_task if 'muzzle_upload_task' in locals() and muzzle_upload_task else None
-    face_crop_url = await face_upload_task if 'face_upload_task' in locals() and face_upload_task else None
-    face_muzzle_crop_url = await face_muzzle_upload_task if 'face_muzzle_upload_task' in locals() and face_muzzle_upload_task else None
+    
+    # If match_status is DUPLICATE, the uploads are awaited here to ensure cleanup or telemetry gets the URLs.
+    if match_status != "SUCCESS":
+        muzzle_crop_url = await muzzle_upload_task if 'muzzle_upload_task' in locals() and muzzle_upload_task else None
+        face_crop_url = await face_upload_task if 'face_upload_task' in locals() and face_upload_task else None
+        face_muzzle_crop_url = await face_muzzle_upload_task if 'face_muzzle_upload_task' in locals() and face_muzzle_upload_task else None
 
     num_crops = sum(x is not None for x in [muzzle_crop_url, face_crop_url, face_muzzle_crop_url])
     

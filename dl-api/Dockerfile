@@ -1,6 +1,9 @@
 # Use an official Python runtime as a parent image
 FROM python:3.10-slim
 
+# Force Python to stream stdout/stderr without buffering
+ENV PYTHONUNBUFFERED=1
+
 # Set the working directory in the container
 WORKDIR /code
 

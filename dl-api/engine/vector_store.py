@@ -63,6 +63,7 @@ class CattleVectorStore:
         source: str,
         cow_name: str = None,
         image_url: str = None,
+        crop_url: str = None,
         superpoint_cache: dict = None,
     ):
         vector_dict = {k: v for k, v in embeddings.items() if v is not None}
@@ -75,6 +76,8 @@ class CattleVectorStore:
             "cow_name":  cow_name,
             "image_url": image_url,
         }
+        if crop_url:
+            payload["crop_url"] = crop_url
         if superpoint_cache:
             payload["superpoint_cache"] = superpoint_cache
 
@@ -244,6 +247,7 @@ class CattleVectorStore:
                 "farmer_id":        hit.payload.get("farmer_id"),
                 "cow_name":         hit.payload.get("cow_name"),
                 "image_url":        hit.payload.get("image_url"),
+                "crop_url":         hit.payload.get("crop_url"),
                 "superpoint_cache": hit.payload.get("superpoint_cache"),
                 "similarity":       float(cow_best_score[cid]),
                 "z_norm_score":     float(cow_znorm_score[cid]),
