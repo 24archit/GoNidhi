@@ -140,7 +140,8 @@ class DLPipeline:
             torch.backends.cudnn.benchmark = True          # Auto-tune conv algorithms for this GPU
             torch.backends.cuda.matmul.allow_tf32 = True   # Allow TF32 for faster matrix multiplications
             torch.backends.cudnn.allow_tf32 = True          # Allow TF32 in cuDNN convolutions
-            print("Enabled: cuDNN benchmark, TF32 matmul, TF32 cuDNN")
+            torch.set_float32_matmul_precision('high')      # Global PyTorch 2.0+ TF32 enablement
+            print("Enabled: cuDNN benchmark, TF32 matmul (high precision), TF32 cuDNN")
         
         self.yolo_face = YOLO(yolo_face_path)
         self.yolo_muzzle = YOLO(yolo_muzzle_path)
@@ -164,12 +165,12 @@ class DLPipeline:
         # torch.compile() — JIT-compile models for 20-50% faster inference (PyTorch 2.0+, Linux GPU only)
         if self.use_gpu:
             try:
-                self.embedding_model = torch.compile(self.embedding_model, mode="reduce-overhead")
-                self.extractor = torch.compile(self.extractor, mode="reduce-overhead")
-                self.matcher = torch.compile(self.matcher, mode="reduce-overhead")
+                self.embedding_model = torch.compile(self.embedding_model, mode="max-autotune")
+                self.extractor = torch.compile(self.extractor, mode="max-autotune")
+                self.matcher = torch.compile(self.matcher, mode="max-autotune")
                 if self.spoof_model:
-                    self.spoof_model = torch.compile(self.spoof_model, mode="reduce-overhead")
-                print("torch.compile() applied to all PyTorch models (reduce-overhead mode).")
+                    self.spoof_model = torch.compile(self.spoof_model, mode="max-autotune")
+                print("torch.compile() applied to all PyTorch models (max-autotune mode).")
             except Exception as compile_err:
                 print(f"torch.compile() not available, continuing without it: {compile_err}")
 

@@ -59,7 +59,7 @@ async def process_registration(payload: dict, notify_webhook: bool = True, fasta
         except Exception as qdrant_err:
             print(f"Failed to wipe Qdrant during crash recovery for {cow_id}: {qdrant_err}")
 
-        error_msg = "Registration failed due to a system processing error. Please try again or contact support if the issue persists."
+        error_msg = "Our AI system encountered an unexpected error while processing your photos. Your photos were likely fine, but our servers hit a hiccup. Please try again shortly!"
         
         if notify_webhook:
             try:
@@ -146,6 +146,7 @@ async def _process_registration_impl(payload: dict, upload_tasks: list, notify_w
                 
     except Exception as e:
         print(f"Image processing error for {cow_id}: {e}")
+        raise RuntimeError(f"Internal AI processing error: {str(e)}") from e
         
     matched_cow_id = None
     best_muzzle_sim = 0.0
