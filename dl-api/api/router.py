@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Depends
 from core import globals as glb
 from schemas import RegistrationJobPayload, SearchRequest
 from services.registration_service import process_registration_safe
-from services.search_service import search_cow_safe, delete_cow_embeddings_from_db, get_all_cow_ids_from_db
+from services.search_service import search_cow_safe
 from core.security import verify_token, limiter
 
 router = APIRouter()
