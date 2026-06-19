@@ -238,6 +238,7 @@ async def _process_registration_impl(payload: dict, upload_tasks: list, notify_w
                     matched_cow_id = matched_candidate["cow_id"]
                     matched_cow_name = matched_candidate.get("cow_name")
                     matched_image_url = matched_candidate.get("image_url")
+                    matched_crop_b64 = matched_candidate.get("muzzle_crop_b64")
                 
         if face_emb or spatial_face_emb:
             if matched_cow_id and 'best_features' in locals() and best_features and best_features.get("spatial_face_sim"):
@@ -258,6 +259,7 @@ async def _process_registration_impl(payload: dict, upload_tasks: list, notify_w
                         matched_cow_id = res_f["cow_id"]
                         matched_cow_name = res_f.get("cow_name")
                         matched_image_url = res_f.get("image_url")
+                        matched_crop_b64 = res_f.get("muzzle_crop_b64")
         
         verdict = evaluate_biometric_match(best_muzzle_sim, best_face_sim, best_lg_matches, best_xgb_score)
         final_confidence = verdict["confidence"]
@@ -276,9 +278,11 @@ async def _process_registration_impl(payload: dict, upload_tasks: list, notify_w
 
             try:
                 if muzzle_emb or spatial_muzzle_emb: 
-                    glb.db.add_embedding({"megadescriptor": muzzle_emb, "spatial_muzzle": spatial_muzzle_emb}, cow_id, farmer_id, source="muzzle", cow_name=cow_name, image_url=muzzle_url, crop_url=muzzle_crop_url, superpoint_cache=muzzle_superpoint_cache)
+                    muzzle_crop_b64_enc = encode_crop(muzzle_crop["clahe"]) if 'muzzle_crop' in locals() and muzzle_crop else None
+                    glb.db.add_embedding({"megadescriptor": muzzle_emb, "spatial_muzzle": spatial_muzzle_emb}, cow_id, farmer_id, source="muzzle", cow_name=cow_name, image_url=muzzle_url, crop_url=muzzle_crop_url, muzzle_crop_b64=muzzle_crop_b64_enc, superpoint_cache=muzzle_superpoint_cache)
                 if face_muzzle_emb or spatial_face_muzzle_emb:
-                    glb.db.add_embedding({"megadescriptor": face_muzzle_emb, "spatial_muzzle": spatial_face_muzzle_emb}, cow_id, farmer_id, source="face_muzzle", cow_name=cow_name, image_url=face_url, crop_url=face_muzzle_crop_url, superpoint_cache=face_muzzle_superpoint_cache)
+                    face_muzzle_crop_b64_enc = encode_crop(face_muzzle_crop["clahe"]) if 'face_muzzle_crop' in locals() and face_muzzle_crop else None
+                    glb.db.add_embedding({"megadescriptor": face_muzzle_emb, "spatial_muzzle": spatial_face_muzzle_emb}, cow_id, farmer_id, source="face_muzzle", cow_name=cow_name, image_url=face_url, crop_url=face_muzzle_crop_url, muzzle_crop_b64=face_muzzle_crop_b64_enc, superpoint_cache=face_muzzle_superpoint_cache)
                 if face_emb or spatial_face_emb: 
                     glb.db.add_embedding({"megadescriptor": face_emb, "spatial_face": spatial_face_emb}, cow_id, farmer_id, source="face", cow_name=cow_name, image_url=face_url, crop_url=face_crop_url)
                 print(f"Successfully registered new cow {cow_id}. Not a duplicate.")
@@ -292,7 +296,7 @@ async def _process_registration_impl(payload: dict, upload_tasks: list, notify_w
 
     inference_time = (time.time() - start_time) * 1000
     
-    trad_metrics = compute_traditional_metrics(muzzle_crop, matched_image_url) if 'muzzle_crop' in locals() else {}
+    trad_metrics = compute_traditional_metrics(muzzle_crop, matched_crop_b64 if 'matched_crop_b64' in locals() else None) if 'muzzle_crop' in locals() else {}
     
     # If match_status is DUPLICATE, the uploads are awaited here to ensure cleanup or telemetry gets the URLs.
     if match_status != "SUCCESS":

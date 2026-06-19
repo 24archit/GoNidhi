@@ -151,6 +151,7 @@ async def _search_cow_impl(req: SearchRequest, fastapi_req: Request):
     best_xgb_score = None
     matched_cow_name = None
     matched_image_url = None
+    matched_crop_b64 = None
     
     query_mega = muzzle_emb or face_muzzle_emb
     query_muzzle = spatial_muzzle_emb or spatial_face_muzzle_emb
@@ -200,6 +201,7 @@ async def _search_cow_impl(req: SearchRequest, fastapi_req: Request):
                 matched_cow_id = matched_candidate["cow_id"]
                 matched_cow_name = matched_candidate.get("cow_name")
                 matched_image_url = matched_candidate.get("image_url")
+                matched_crop_b64 = matched_candidate.get("muzzle_crop_b64")
                 
     if face_emb or spatial_face_emb:
         if matched_cow_id and 'best_features' in locals() and best_features and best_features.get("spatial_face_sim"):
@@ -221,6 +223,7 @@ async def _search_cow_impl(req: SearchRequest, fastapi_req: Request):
                     matched_cow_id = f_candidates[0]["cow_id"]
                     matched_cow_name = f_candidates[0].get("cow_name")
                     matched_image_url = f_candidates[0].get("image_url")
+                    matched_crop_b64 = f_candidates[0].get("muzzle_crop_b64")
                     if 'best_features' in locals() and best_features is not None:
                         best_features["spatial_face_sim"] = best_face_sim
 
@@ -229,7 +232,7 @@ async def _search_cow_impl(req: SearchRequest, fastapi_req: Request):
     
     inference_time = (time.time() - start_time) * 1000
     
-    trad_metrics = compute_traditional_metrics(muzzle_crop, matched_image_url) if muzzle_crop is not None else {}
+    trad_metrics = compute_traditional_metrics(muzzle_crop, matched_crop_b64) if muzzle_crop is not None else {}
     
     muzzle_crop_url = await muzzle_upload_task if 'muzzle_upload_task' in locals() and muzzle_upload_task else None
     face_crop_url = await face_upload_task if 'face_upload_task' in locals() and face_upload_task else None

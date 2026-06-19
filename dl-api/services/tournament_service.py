@@ -4,7 +4,7 @@ import pandas as pd
 from fastapi import Request
 
 from core import globals as glb
-from services.image_service import extract_crop_from_b64, download_image
+from services.image_service import extract_crop_from_b64
 from engine.traditional_features import get_texture_features, get_morphology_features
 from services.fusion_service import compute_cosine_similarity
 
@@ -119,7 +119,7 @@ async def run_biometric_tournament(query_mega, query_muzzle, query_face, query_m
     return best_candidate_id, best_xgb_score, best_features
 
 
-def compute_traditional_metrics(query_crop_dict, matched_image_url):
+def compute_traditional_metrics(query_crop_dict, matched_crop_b64):
     results = {
         "trad_morphology": None,
         "trad_lbp_dist": None,
@@ -137,15 +137,12 @@ def compute_traditional_metrics(query_crop_dict, matched_image_url):
     except Exception as e:
         print(f"Morphology error: {e}")
 
-    if not matched_image_url:
+    if not matched_crop_b64:
         return results
         
     try:
-        matched_img = download_image(matched_image_url)
-        matched_crop_dict, _ = glb.dl.extract_biometric(matched_img, part_type="muzzle")
-        if matched_crop_dict and "clahe" in matched_crop_dict:
-            matched_crop = matched_crop_dict["clahe"]
-            
+        matched_crop = extract_crop_from_b64(matched_crop_b64)
+        if matched_crop is not None:
             q_lbp, q_hog = get_texture_features(query_crop)
             m_lbp, m_hog = get_texture_features(matched_crop)
             
