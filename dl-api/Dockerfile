@@ -6,7 +6,7 @@ WORKDIR /code
 
 # Install system dependencies required by OpenCV + git-lfs for model files
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1 libglib2.0-0 git git-lfs \
+    libgl1 libglib2.0-0 git git-lfs gcc g++ \
     && git lfs install \
     && rm -rf /var/lib/apt/lists/*
 
