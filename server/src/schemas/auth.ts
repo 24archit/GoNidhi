@@ -24,6 +24,7 @@ export const adminRegisterBackendSchema = z.object({
   password: z.string().min(6, 'Password must be at least 6 characters'),
   state: z.string().min(1, 'State is required'),
   district: z.string().min(1, 'District is required'),
+  adminSecret: z.string().min(1, 'Admin Creation Secret is required'),
 });
 
 export const adminRegisterFrontendSchema = adminRegisterBackendSchema.extend({

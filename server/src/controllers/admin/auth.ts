@@ -55,7 +55,13 @@ export const registerAdmin = async (req: Request, res: Response) => {
         if (!parseResult.success) {
             return res.status(400).json({ success: false, message: parseResult.error.issues[0].message });
         }
-        const { name, phone, password, district } = parseResult.data;
+        const { name, phone, password, district, adminSecret } = req.body;
+
+        const expectedSecret = process.env.ADMIN_CREATION_SECRET;
+        if (!expectedSecret || adminSecret !== expectedSecret) {
+            logger.warn('Unauthorized attempt to create an admin account');
+            return res.status(403).json({ success: false, message: 'Forbidden: Invalid or missing admin creation secret.' });
+        }
 
         const existingUser = await User.findOne({ 'contact.phone': phone });
         if (existingUser) {

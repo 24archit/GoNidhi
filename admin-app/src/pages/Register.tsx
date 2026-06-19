@@ -30,6 +30,7 @@ const Register: React.FC = () => {
         confirmPassword: '',
         state: 'Odisha',
         district: '',
+        adminSecret: '',
     });
 
     const [states, setStates] = useState<string[]>([]);
@@ -86,7 +87,8 @@ const Register: React.FC = () => {
                 phone: formData.phone,
                 password: formData.password,
                 state: formData.state,
-                district: formData.district
+                district: formData.district,
+                adminSecret: formData.adminSecret
             });
             if (response.data.success) {
                 login(response.data.token, response.data.user);
@@ -221,6 +223,18 @@ const Register: React.FC = () => {
                                 )
                             }
                         }}
+                    />
+
+                    <TextField
+                        label="Admin Creation Secret"
+                        name="adminSecret"
+                        type="password"
+                        variant="outlined"
+                        fullWidth
+                        value={formData.adminSecret}
+                        onChange={handleChange}
+                        required
+                        helperText="Required to authorize admin account creation"
                     />
 
                     <Button
