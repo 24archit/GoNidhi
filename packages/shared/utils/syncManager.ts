@@ -138,8 +138,14 @@ export const syncManager = {
                     // Determine if it was a validation/AI rejection or a network failure
                     const isValidationError = err.response?.status && err.response.status >= 400 && err.response.status < 500;
                     const isAiError = err.message && err.message.includes('Registration failed') || err.message === 'Timeout waiting for AI verification.';
+                    const backendMsg = err.response?.data?.message || err.message || '';
+                    const isDuplicateError = backendMsg.includes('already been registered') || backendMsg.includes('already exists') || backendMsg.includes('already registered');
 
-                    if (isValidationError || isAiError) {
+                    if (isDuplicateError) {
+                        // The cow is already registered or duplicate tag/photo, remove it from offline queue immediately
+                        await syncManager.removePendingCow(cow.id);
+                        console.warn(`Registration ${cow.id} discarded because it is already registered or a duplicate.`);
+                    } else if (isValidationError || isAiError) {
                         try {
                             const newRetryCount = (cow.retryCount || 0) + 1;
                             if (newRetryCount >= 10) {
@@ -150,7 +156,7 @@ export const syncManager = {
                                     ...cow,
                                     syncStatus: 'failed',
                                     retryCount: newRetryCount,
-                                    errorMessage: err.message || 'Validation error from server',
+                                    errorMessage: backendMsg || 'Validation error from server',
                                 });
                             }
                         } catch (updateErr) {

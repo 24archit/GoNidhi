@@ -63,8 +63,9 @@ export const createCattleRegistration = async (req: any, farmerId: string, paylo
     const existingWithHash = await Cattle.findOne({ farmerId, 'photos.imageHash': imageHash });
     if (existingWithHash) {
         if (existingWithHash.aiMetadata?.status === 'SUCCESS' || existingWithHash.aiMetadata?.status === 'PROCESSING_RESULT' || existingWithHash.isDispute) {
-            logger.info(`Idempotent retry detected via imageHash for farmer ${farmerId}. Returning existing cow.`);
-            return existingWithHash;
+            const err = new Error('This exact cow photo has already been registered in your herd. If this is a different cow, please take a new, clear photo.');
+            (err as any).statusCode = 400;
+            throw err;
         } else if (existingWithHash.aiMetadata?.status === 'PENDING') {
             const err = new Error('This cow is currently being processed. Please wait for the result.');
             (err as any).statusCode = 400;
@@ -179,7 +180,7 @@ export const createCattleRegistration = async (req: any, farmerId: string, paylo
             logger.error(dbError, 'Error saving to MongoDB, rolling back:');
             if (dbError.code === 11000) {
                 if (dbError.keyPattern && dbError.keyPattern.tagNumber) {
-                    const err = new Error('Cow with this tag number already exists');
+                    const err = new Error('A cow with this tag number already exists. Please verify the tag number, or check your "My Cows" page.');
                     (err as any).statusCode = 400;
                     throw err;
                 }
