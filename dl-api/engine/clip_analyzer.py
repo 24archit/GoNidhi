@@ -108,32 +108,46 @@ class UnifiedCLIPAnalyzer:
             except Exception as exc:
                 print(f"[CLIP] torch.compile() skipped: {exc}", flush=True)
 
-        # ── Prompt schema ──────────────────────────────────────────────────────
-        # QA gates:   index 0 is ALWAYS the PASS / safe condition.
-        # Semantic:   all prompts are candidates; winner maps to a DB tag.
+        # ── QA Gate Schema (pass/fail sublists per gate) ─────────────────────
+        # Each gate has multiple PASS prompts and multiple FAIL prompts.
+        # At inference time we average PASS logits and take the max FAIL logit,
+        # then apply a binary softmax + threshold. This eliminates the 1-vs-N
+        # asymmetry of the old single-PASS-prompt approach.
+        self.qa_gate_schema: dict[str, dict] = {
+            "liveness": {
+                "pass": [
+                    "a real cow being photographed outdoors in a field or farm",
+                    "a live cow standing on grass or dirt in natural outdoor light",
+                ],
+                "fail": [
+                    "a photo of a monitor, screen, or digital display showing a cow",
+                    "a photo of a printed poster, photograph, or paper image of a cow",
+                ],
+            },
+            "contamination": {
+                "pass": [
+                    "a close-up of a cow muzzle that is clean, with just natural moisture on it",
+                    "a cow muzzle that looks healthy and free of any debris",
+                ],
+                "fail": [
+                    "a cow muzzle heavily covered in white foam, drool, saliva, or bubbles",
+                    "a cow muzzle with visible mud, dirt, dung, or green grass clumped on it",
+                ],
+            },
+            "alignment": {
+                "pass": [
+                    "a cow face photographed from the front with the muzzle at the bottom and both sides of the face symmetrically visible",
+                    "a close-up photo of a cow face looking directly toward the camera",
+                ],
+                "fail": [
+                    "an upside-down photo of a cow with the nose pointing upward and hooves at the top",
+                    "a cow photographed from the side with its head turned away showing only one ear and one eye",
+                ],
+            },
+        }
+
+        # ── Semantic Tag Schema ────────────────────────────────────────────────
         self.prompt_schema: dict[str, list[str]] = {
-            # ── QA Gates ──────────────────────────────────────────────────────
-            "liveness": [
-                # 0 → PASS
-                "a real cow being photographed outdoors in a field or farm",
-                "a photo of a monitor, screen, or digital display showing a cow",
-                "a photo of a printed poster, photograph, or paper image of a cow",
-            ],
-            "contamination": [
-                # 0 → PASS: naturally moist or clean muzzle is fine
-                "a close-up of a cow muzzle that is clean, with just natural moisture on it",
-                "a cow muzzle heavily covered in white foam, drool, saliva, or bubbles",
-                "a cow muzzle with visible mud, dirt, dung, or green grass clumped on it",
-            ],
-            "alignment": [
-                # 0 → PASS: frontal or close-up front shot, both sides of face visible, muzzle centred
-                "a cow face photographed from the front with the muzzle at the bottom and both sides of the face symmetrically visible",
-                # FAIL: upside down
-                "an upside-down photo of a cow with the nose pointing upward and hooves at the top",
-                # FAIL: side profile, cow head turned sideways
-                "a cow photographed from the side with its head turned away showing only one ear and one eye",
-            ],
-            # ── Semantic Tags ──────────────────────────────────────────────────
             "color": [
                 "a photo of a cow face that is mostly black",
                 "a photo of a cow face that is mostly white",
@@ -166,10 +180,25 @@ class UnifiedCLIPAnalyzer:
             "a photo of a cow face with short or no horns":                "polled",
         }
 
-        # Build flat prompt list and contiguous index slices per category
+        # Build flat prompt list: QA gate prompts first, then semantic prompts
         self.flat_prompts: list[str] = []
-        self.slices: dict[str, tuple[int, int]] = {}
+        self.gate_slices: dict[str, dict] = {}  # gate_name → {"pass": (s,e), "fail": (s,e)}
+        self.slices: dict[str, tuple[int, int]] = {}  # semantic cat → (s, e)
         idx = 0
+
+        for gate_name, gate_data in self.qa_gate_schema.items():
+            pass_start = idx
+            self.flat_prompts.extend(gate_data["pass"])
+            pass_end = idx + len(gate_data["pass"])
+            idx = pass_end
+
+            fail_start = idx
+            self.flat_prompts.extend(gate_data["fail"])
+            fail_end = idx + len(gate_data["fail"])
+            idx = fail_end
+
+            self.gate_slices[gate_name] = {"pass": (pass_start, pass_end), "fail": (fail_start, fail_end)}
+
         for cat, prompts in self.prompt_schema.items():
             self.flat_prompts.extend(prompts)
             self.slices[cat] = (idx, idx + len(prompts))
@@ -267,29 +296,53 @@ class UnifiedCLIPAnalyzer:
         s, e = self.slices[category]
         return logits[s:e].softmax(dim=-1).numpy()
 
-    def _run_qa_gates(self, raw_logits: torch.Tensor, image_type: str):
+    def _run_qa_gate(self, raw_logits: torch.Tensor, gate_name: str, threshold: float) -> bool:
         """
-        Run liveness, contamination, and alignment gates on pre-computed logits.
-        Skips alignment on muzzle photos and contamination on face photos.
+        Returns True (→ REJECT) if the gate fires with high confidence.
+
+        Three-layer precision guard:
+        1. Entropy bypass  — if CLIP is uncertain across all prompts, default to PASS.
+        2. Ensemble PASS   — average all PASS prompt logits; FAIL must beat this average.
+        3. Binary threshold — confidence of FAIL vs PASS ensemble must exceed `threshold`.
         """
-        # Liveness applies to ALL photos (soft threshold)
-        probs = self._softmax_slice(raw_logits, "liveness")
-        winner = int(np.argmax(probs))
-        if winner != 0 and float(probs[winner]) >= self.LIVENESS_REJECT_THRESHOLD:
-            return {"status": "REJECT", "reason": "REJ_QA_NOT_LIVE_IMAGE"}
+        pass_s, pass_e = self.gate_slices[gate_name]["pass"]
+        fail_s, fail_e = self.gate_slices[gate_name]["fail"]
+
+        # ── 1. Entropy bypass ─────────────────────────────────────────────────
+        all_gate = raw_logits[pass_s:fail_e]
+        all_probs = all_gate.softmax(dim=-1).numpy()
+        entropy = -float(np.sum(all_probs * np.log(all_probs + 1e-9)))
+        max_entropy = np.log(len(all_probs))
+        if entropy / max_entropy > 0.88:   # CLIP is confused → don't reject
+            return False
+
+        # ── 2. Ensemble PASS vs max FAIL ──────────────────────────────────────
+        pass_score = float(raw_logits[pass_s:pass_e].mean().item())
+        fail_score = float(raw_logits[fail_s:fail_e].max().item())
+        if fail_score <= pass_score:       # PASS ensemble wins outright
+            return False
+
+        # ── 3. Binary softmax confidence ──────────────────────────────────────
+        scores = torch.tensor([pass_score, fail_score])
+        fail_conf = float(scores.softmax(dim=0)[1].item())
+        return fail_conf >= threshold
+
+    def _run_qa_gates(self, raw_logits: torch.Tensor, image_type: str, skip_liveness: bool = False):
+        """
+        Dispatch gate checks based on image type.
+        Returns rejection dict or None (pass).
+        Liveness can be skipped here when consensus mode is used in analyze_images.
+        """
+        if not skip_liveness:
+            if self._run_qa_gate(raw_logits, "liveness", self.LIVENESS_REJECT_THRESHOLD):
+                return {"status": "REJECT", "reason": "REJ_QA_NOT_LIVE_IMAGE"}
 
         if image_type == "muzzle":
-            # Contamination (soft threshold — avoids natural moist-muzzle false positives)
-            probs = self._softmax_slice(raw_logits, "contamination")
-            winner = int(np.argmax(probs))
-            if winner != 0 and float(probs[winner]) >= self.CONTAMINATION_REJECT_THRESHOLD:
+            if self._run_qa_gate(raw_logits, "contamination", self.CONTAMINATION_REJECT_THRESHOLD):
                 return {"status": "REJECT", "reason": "REJ_QA_CONTAMINATED_MUZZLE"}
 
         if image_type == "face":
-            # Alignment (soft threshold — only rejects clearly sideways / upside-down shots)
-            probs = self._softmax_slice(raw_logits, "alignment")
-            winner = int(np.argmax(probs))
-            if winner != 0 and float(probs[winner]) >= self.ALIGNMENT_REJECT_THRESHOLD:
+            if self._run_qa_gate(raw_logits, "alignment", self.ALIGNMENT_REJECT_THRESHOLD):
                 return {"status": "REJECT", "reason": "REJ_QA_BAD_ALIGNMENT"}
 
         return None  # All gates passed
@@ -305,6 +358,9 @@ class UnifiedCLIPAnalyzer:
     ) -> dict:
         """
         PRIMARY ENTRY POINT — Full QA + semantic analysis on original uncropped images.
+
+        Liveness uses a two-image consensus: only rejects if BOTH images flag a
+        liveness violation. All other gates are per-image.
         """
         if face_pil is None and muzzle_pil is None:
             return {"status": "REJECT", "reason": "NO_IMAGE"}
@@ -317,28 +373,44 @@ class UnifiedCLIPAnalyzer:
             images_to_encode.append(muzzle_pil)
 
         all_logits = self._all_logits_batch(images_to_encode)
-        
+
         logits_face = None
         logits_muzzle = None
-        idx = 0
-        
-        # ── QA gates ──────────────────────────────────────────────────
+        enc_idx = 0
+
         if face_pil is not None:
-            logits_face = all_logits[idx]
-            rejection = self._run_qa_gates(logits_face, "face")
+            logits_face = all_logits[enc_idx]; enc_idx += 1
+        if muzzle_pil is not None:
+            logits_muzzle = all_logits[enc_idx]
+
+        # ── Liveness consensus ─────────────────────────────────────────────────
+        # Only reject for liveness if BOTH images flag the problem independently.
+        # Single-image liveness flags are ignored (reduces false positives on
+        # borderline lighting conditions).
+        live_fail_face   = logits_face   is not None and self._run_qa_gate(logits_face,   "liveness", self.LIVENESS_REJECT_THRESHOLD)
+        live_fail_muzzle = logits_muzzle is not None and self._run_qa_gate(logits_muzzle, "liveness", self.LIVENESS_REJECT_THRESHOLD)
+        both_present = logits_face is not None and logits_muzzle is not None
+
+        if both_present:
+            if live_fail_face and live_fail_muzzle:
+                return {"status": "REJECT", "reason": "REJ_QA_NOT_LIVE_IMAGE"}
+        else:
+            # Only one image available — fall back to single-image liveness check
+            if live_fail_face or live_fail_muzzle:
+                return {"status": "REJECT", "reason": "REJ_QA_NOT_LIVE_IMAGE"}
+
+        # ── Per-image QA gates (skip liveness, already handled above) ──────────
+        if logits_face is not None:
+            rejection = self._run_qa_gates(logits_face, "face", skip_liveness=True)
             if rejection:
                 return rejection
-            idx += 1
-            
-        if muzzle_pil is not None:
-            logits_muzzle = all_logits[idx]
-            rejection = self._run_qa_gates(logits_muzzle, "muzzle")
+
+        if logits_muzzle is not None:
+            rejection = self._run_qa_gates(logits_muzzle, "muzzle", skip_liveness=True)
             if rejection:
                 return rejection
 
         # ── Semantic tagging: logit-space ensemble ─────────────────────────────
-        # Averaging raw logits before softmax is equivalent to geometric-mean
-        # probability ensemble. Prompts that score high in BOTH images win.
         if logits_face is not None and logits_muzzle is not None:
             semantic_logits = (logits_face + logits_muzzle) * 0.5
         elif logits_face is not None:
