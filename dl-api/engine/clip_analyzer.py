@@ -125,9 +125,9 @@ class UnifiedCLIPAnalyzer:
             ],
             "alignment": [
                 # 0 → PASS
-                "an upright photo of a cow face with eyes at top and muzzle at bottom",
-                "an upside down photo of a cow face with the muzzle at the top",
-                "a sideways or rotated profile photo of a cow face",
+                "a portrait photo of a cow looking directly at the camera",
+                "an upside down photo of a cow",
+                "a sideways profile photo of a cow looking away",
             ],
             # ── Semantic Tags ──────────────────────────────────────────────────
             "color": [
@@ -263,28 +263,28 @@ class UnifiedCLIPAnalyzer:
         s, e = self.slices[category]
         return logits[s:e].softmax(dim=-1).numpy()
 
-    def _run_qa_gates(self, raw_logits: torch.Tensor):
+    def _run_qa_gates(self, raw_logits: torch.Tensor, image_type: str):
         """
         Run liveness, contamination, and alignment gates on pre-computed logits.
-
-        Returns a rejection dict if any gate fires, or None when all gates pass.
-        Called once per image inside analyze_face_crops().
+        Skips alignment on muzzle photos and contamination on face photos.
         """
-        # Liveness (soft threshold — only blocks obvious screen/print captures)
+        # Liveness applies to ALL photos (soft threshold)
         probs = self._softmax_slice(raw_logits, "liveness")
         winner = int(np.argmax(probs))
         if winner != 0 and float(probs[winner]) >= self.LIVENESS_REJECT_THRESHOLD:
             return {"status": "REJECT", "reason": "REJ_QA_NOT_LIVE_IMAGE"}
 
-        # Contamination
-        probs = self._softmax_slice(raw_logits, "contamination")
-        if int(np.argmax(probs)) != 0:
-            return {"status": "REJECT", "reason": "REJ_QA_CONTAMINATED_MUZZLE"}
+        if image_type == "muzzle":
+            # Contamination (only matters on close-up muzzle photo)
+            probs = self._softmax_slice(raw_logits, "contamination")
+            if int(np.argmax(probs)) != 0:
+                return {"status": "REJECT", "reason": "REJ_QA_CONTAMINATED_MUZZLE"}
 
-        # Alignment
-        probs = self._softmax_slice(raw_logits, "alignment")
-        if int(np.argmax(probs)) != 0:
-            return {"status": "REJECT", "reason": "REJ_QA_BAD_ALIGNMENT"}
+        if image_type == "face":
+            # Alignment (only matters for the full face photo; close-up muzzle lacks context/eyes)
+            probs = self._softmax_slice(raw_logits, "alignment")
+            if int(np.argmax(probs)) != 0:
+                return {"status": "REJECT", "reason": "REJ_QA_BAD_ALIGNMENT"}
 
         return None  # All gates passed
 
@@ -292,81 +292,53 @@ class UnifiedCLIPAnalyzer:
     # Public API
     # ─────────────────────────────────────────────────────────────────────────
 
-    def analyze_face_crops(
+    def analyze_images(
         self,
-        primary_pil: Image.Image,
-        secondary_pil: Image.Image = None,
+        face_pil: Image.Image = None,
+        muzzle_pil: Image.Image = None,
     ) -> dict:
         """
-        PRIMARY ENTRY POINT — Full QA + semantic analysis on face YOLO crops.
-
-        Why face YOLO crops only (not muzzle YOLO crops)
-        --------------------------------------------------
-        The face YOLO crop contains full-face context: eyes, forehead, ears,
-        and the muzzle all visible together. This is what CLIP needs to reliably
-        judge orientation, liveness, colour, and horn presence. The tight muzzle
-        YOLO crop lacks this context entirely.
-
-        Intended usage
-        --------------
-        Call with the face YOLO crop extracted from BOTH source images:
-          primary_pil   = face YOLO crop from the face photo (raw, no CLAHE)
-          secondary_pil = face YOLO crop from the muzzle photo (raw, no CLAHE)
-
-        QA behaviour
-        ------------
-        - Zero-cost orientation gate fires before any GPU work on each image.
-        - _run_qa_gates() is called on each crop independently.
-        - A rejection on EITHER image rejects the whole request (stricter QA).
-
-        Semantic tagging
-        ----------------
-        - Logits from both crops are AVERAGED before softmax + argmax.
-        - This is an implicit logit-space ensemble: prompts that score high in
-          BOTH images win; single-image noise/lighting flukes lose.
-        - If only primary is available, its logits are used directly.
-
-        Parameters
-        ----------
-        primary_pil   : Face YOLO crop from the face source image. Required.
-                        Must be the RAW crop — no CLAHE, no enhancement.
-        secondary_pil : Face YOLO crop from the muzzle source image. Optional.
-                        Must also be the RAW crop if provided.
-
-        Returns
-        -------
-        Pass  : {"status": "PASS",   "metadata_payload": {"semantic_color": ..., ...}}
-        Reject: {"status": "REJECT", "reason": "<REJECT_CODE>"}
+        PRIMARY ENTRY POINT — Full QA + semantic analysis on original uncropped images.
         """
+        if face_pil is None and muzzle_pil is None:
+            return {"status": "REJECT", "reason": "NO_IMAGE"}
+
         # ── Batched GPU forward pass ───────────────────────────────────────────
-        images_to_encode = [primary_pil]
-        if secondary_pil is not None:
-            images_to_encode.append(secondary_pil)
+        images_to_encode = []
+        if face_pil is not None:
+            images_to_encode.append(face_pil)
+        if muzzle_pil is not None:
+            images_to_encode.append(muzzle_pil)
 
         all_logits = self._all_logits_batch(images_to_encode)
-        logits_primary = all_logits[0]
-
-        # ── QA gates: primary ──────────────────────────────────────────────────
-        rejection = self._run_qa_gates(logits_primary)
-        if rejection:
-            return rejection
-
-        # ── QA gates: secondary (when available) ───────────────────────────────
-        logits_secondary = None
-        if secondary_pil is not None:
-            logits_secondary = all_logits[1]
-            rejection = self._run_qa_gates(logits_secondary)
+        
+        logits_face = None
+        logits_muzzle = None
+        idx = 0
+        
+        # ── QA gates ──────────────────────────────────────────────────
+        if face_pil is not None:
+            logits_face = all_logits[idx]
+            rejection = self._run_qa_gates(logits_face, "face")
+            if rejection:
+                return rejection
+            idx += 1
+            
+        if muzzle_pil is not None:
+            logits_muzzle = all_logits[idx]
+            rejection = self._run_qa_gates(logits_muzzle, "muzzle")
             if rejection:
                 return rejection
 
         # ── Semantic tagging: logit-space ensemble ─────────────────────────────
         # Averaging raw logits before softmax is equivalent to geometric-mean
-        # probability ensemble. Prompts that score high in BOTH images win;
-        # single-image lighting/angle flukes are smoothed out.
-        if logits_secondary is not None:
-            semantic_logits = (logits_primary + logits_secondary) * 0.5
+        # probability ensemble. Prompts that score high in BOTH images win.
+        if logits_face is not None and logits_muzzle is not None:
+            semantic_logits = (logits_face + logits_muzzle) * 0.5
+        elif logits_face is not None:
+            semantic_logits = logits_face
         else:
-            semantic_logits = logits_primary
+            semantic_logits = logits_muzzle
 
         payload: dict = {}
         for cat in ("color", "pattern", "horns"):

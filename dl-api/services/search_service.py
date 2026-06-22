@@ -146,11 +146,8 @@ async def _search_cow_impl(req: SearchRequest, fastapi_req: Request):
                 clip_primary = Image.fromarray(cv2.cvtColor(face_img, cv2.COLOR_BGR2RGB)) if face_img is not None else None
                 clip_secondary = Image.fromarray(cv2.cvtColor(muzzle_img, cv2.COLOR_BGR2RGB)) if muzzle_img is not None else None
 
-                clip_main = clip_primary or clip_secondary
-                clip_sub = clip_secondary if clip_primary is not None else None
-
-                if clip_main is not None:
-                    clip_result = glb.dl.clip_analyzer.analyze_face_crops(clip_main, clip_sub)
+                if clip_primary is not None or clip_secondary is not None:
+                    clip_result = glb.dl.clip_analyzer.analyze_images(face_pil=clip_primary, muzzle_pil=clip_secondary)
                     if clip_result["status"] == "PASS":
                         res["clip_semantic_tags"] = clip_result["metadata_payload"]
                     else:
