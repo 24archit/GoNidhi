@@ -12,6 +12,7 @@ router = APIRouter()
 @router.post("/register", dependencies=[Depends(verify_token)])
 @limiter.limit("20/minute")
 async def async_register(
+    request: Request,
     background_tasks: BackgroundTasks,
     farmer_id: str = Form(...),
     cow_id: str = Form(...),
@@ -36,7 +37,7 @@ async def async_register(
 @router.post("/search", dependencies=[Depends(verify_token)])
 @limiter.limit("30/minute")
 async def search_cow(
-    fastapi_req: Request,
+    request: Request,
     user_id: str = Form(...),
     role: str = Form(...),
     face_image_url: str = Form(None),
@@ -53,7 +54,7 @@ async def search_cow(
         face_image_url=face_image_url, muzzle_image_url=muzzle_image_url,
         face_image_bytes=f_bytes, muzzle_image_bytes=m_bytes
     )
-    return await search_cow_safe(req, fastapi_req)
+    return await search_cow_safe(req, request)
 
 
 
