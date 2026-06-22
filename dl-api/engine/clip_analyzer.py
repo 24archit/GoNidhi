@@ -190,10 +190,14 @@ class UnifiedCLIPAnalyzer:
                 elif hasattr(txt_out, "pooler_output"):
                     # Some versions/compilations of transformers return the base output
                     # and skip the projection layer in get_text_features
+                    pool_out = txt_out.pooler_output
                     if hasattr(self.model, "text_projection") and self.model.text_projection is not None:
-                        txt_feats = self.model.text_projection(txt_out.pooler_output)
+                        if pool_out.shape[-1] == self.model.text_projection.in_features:
+                            txt_feats = self.model.text_projection(pool_out)
+                        else:
+                            txt_feats = pool_out
                     else:
-                        txt_feats = txt_out.pooler_output
+                        txt_feats = pool_out
                 else:
                     txt_feats = txt_out
                     
@@ -225,10 +229,14 @@ class UnifiedCLIPAnalyzer:
             if hasattr(img_out, "image_embeds") and img_out.image_embeds is not None:
                 img_feats = img_out.image_embeds
             elif hasattr(img_out, "pooler_output"):
+                pool_out = img_out.pooler_output
                 if hasattr(self.model, "visual_projection") and self.model.visual_projection is not None:
-                    img_feats = self.model.visual_projection(img_out.pooler_output)
+                    if pool_out.shape[-1] == self.model.visual_projection.in_features:
+                        img_feats = self.model.visual_projection(pool_out)
+                    else:
+                        img_feats = pool_out
                 else:
-                    img_feats = img_out.pooler_output
+                    img_feats = pool_out
             else:
                 img_feats = img_out
 
