@@ -218,9 +218,21 @@ class UnifiedCLIPAnalyzer:
         with torch.inference_mode():
             if self.use_gpu:
                 with torch.amp.autocast("cuda", enabled=True):
-                    img_feats = self.model.get_image_features(**inputs).float()
+                    img_out = self.model.get_image_features(**inputs)
             else:
-                img_feats = self.model.get_image_features(**inputs)
+                img_out = self.model.get_image_features(**inputs)
+
+            if hasattr(img_out, "image_embeds") and img_out.image_embeds is not None:
+                img_feats = img_out.image_embeds
+            elif hasattr(img_out, "pooler_output"):
+                if hasattr(self.model, "visual_projection") and self.model.visual_projection is not None:
+                    img_feats = self.model.visual_projection(img_out.pooler_output)
+                else:
+                    img_feats = img_out.pooler_output
+            else:
+                img_feats = img_out
+
+            img_feats = img_feats.float()
 
         return img_feats / img_feats.norm(dim=-1, keepdim=True)
 
