@@ -74,7 +74,8 @@ class UnifiedCLIPAnalyzer:
 
     # Liveness gate: only reject if the non-live prompt wins AND its
     # confidence >= this threshold. Keeps borderline real photos safe.
-    LIVENESS_REJECT_THRESHOLD: float = 0.72
+    LIVENESS_REJECT_THRESHOLD = 0.80
+    ALIGNMENT_REJECT_THRESHOLD = 0.70  # Only reject if HIGHLY confident it is rotated/upside down
 
     def __init__(self, device: str) -> None:
         self.device = device
@@ -281,9 +282,10 @@ class UnifiedCLIPAnalyzer:
                 return {"status": "REJECT", "reason": "REJ_QA_CONTAMINATED_MUZZLE"}
 
         if image_type == "face":
-            # Alignment (only matters for the full face photo; close-up muzzle lacks context/eyes)
+            # Alignment (soft threshold)
             probs = self._softmax_slice(raw_logits, "alignment")
-            if int(np.argmax(probs)) != 0:
+            winner = int(np.argmax(probs))
+            if winner != 0 and float(probs[winner]) >= self.ALIGNMENT_REJECT_THRESHOLD:
                 return {"status": "REJECT", "reason": "REJ_QA_BAD_ALIGNMENT"}
 
         return None  # All gates passed
