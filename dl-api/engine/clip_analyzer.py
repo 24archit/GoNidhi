@@ -125,10 +125,12 @@ class UnifiedCLIPAnalyzer:
                 "a cow muzzle with grass, dirt, or food particles stuck to it",
             ],
             "alignment": [
-                # 0 → PASS
-                "a portrait photo of a cow looking directly at the camera",
-                "an upside down photo of a cow",
-                "a sideways profile photo of a cow looking away",
+                # 0 → PASS: both eyes visible and symmetrical, nose centred, frontal shot
+                "a cow face looking straight at the camera with both eyes and nose visible and centred",
+                # FAIL: upside down
+                "an upside-down photo of a cow with the nose pointing upward and hooves at the top",
+                # FAIL: side profile, only one eye visible
+                "a side profile of a cow showing only one eye and the ear on the same side",
             ],
             # ── Semantic Tags ──────────────────────────────────────────────────
             "color": [
@@ -282,7 +284,7 @@ class UnifiedCLIPAnalyzer:
                 return {"status": "REJECT", "reason": "REJ_QA_CONTAMINATED_MUZZLE"}
 
         if image_type == "face":
-            # Alignment (soft threshold)
+            # Alignment (soft threshold — only rejects clearly sideways / upside-down shots)
             probs = self._softmax_slice(raw_logits, "alignment")
             winner = int(np.argmax(probs))
             if winner != 0 and float(probs[winner]) >= self.ALIGNMENT_REJECT_THRESHOLD:
