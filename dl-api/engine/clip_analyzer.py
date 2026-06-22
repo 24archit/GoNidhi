@@ -136,12 +136,16 @@ class UnifiedCLIPAnalyzer:
             },
             "alignment": {
                 "pass": [
-                    "a cow face photographed from the front with the muzzle at the bottom and both sides of the face symmetrically visible",
-                    "a close-up photo of a cow face looking directly toward the camera",
+                    "a high quality frontal portrait of a cow face",
+                    "a photo of a cow looking directly at the camera",
+                    "a clear, well-lit photo of a cow's face from the front",
+                    "a symmetrical close-up of a cow's face",
                 ],
                 "fail": [
-                    "an upside-down photo of a cow with the nose pointing upward and hooves at the top",
-                    "a cow photographed from the side with its head turned away showing only one ear and one eye",
+                    "a photo of a cow facing away from the camera",
+                    "a photo of a cow taken from the side profile",
+                    "a photo of a cow's body, missing the head",
+                    "a blurry, badly cropped, or unaligned photo of a cow",
                 ],
             },
         }
