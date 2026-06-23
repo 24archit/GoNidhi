@@ -226,10 +226,10 @@ export default function AnalyticsDetail() {
     if (log.matchedCowId && log.matchedCowId !== 'Unknown') {
       targetProfileId = log.matchedCowId;
       profileButtonText = "View Matched Cattle Profile";
-    } else if (log.endpoint === 'search' && log.cowId && log.cowId !== 'Unknown') {
+    } else if (formatEndpoint(log.endpoint) === 'SEARCH' && log.cowId && log.cowId !== 'Unknown') {
       targetProfileId = log.cowId;
       profileButtonText = "View Matched Cattle Profile";
-    } else if (log.endpoint === 'registration' && status === 'SUCCESS' && log.cowId && log.cowId !== 'Unknown') {
+    } else if (formatEndpoint(log.endpoint) === 'REGISTER' && status === 'SUCCESS' && log.cowId && log.cowId !== 'Unknown') {
       targetProfileId = log.cowId;
       profileButtonText = "View Registered Cattle Profile";
     }
@@ -311,7 +311,7 @@ export default function AnalyticsDetail() {
               </Box>
 
               {/* Final Confidence Score */}
-              {log.endpoint === 'search' && (log.ensembleScore != null || log.xgbMappedScore != null) && (
+              {formatEndpoint(log.endpoint) === 'SEARCH' && (log.ensembleScore != null || log.xgbMappedScore != null) && (
                 <Box sx={{ textAlign: 'center', flexShrink: 0 }}>
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.6rem', mb: 0.5 }}>
                     Confidence

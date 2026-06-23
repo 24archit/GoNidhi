@@ -166,6 +166,14 @@ const App: React.FC = () => {
   const [isFirstLaunch, setIsFirstLaunch] = useState<boolean | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [isAppLoaded, setIsAppLoaded] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('Connecting...');
+
+  useEffect(() => {
+    const messageTimer = setTimeout(() => {
+      setLoadingMessage('Waking up server (cold start may take up to 50s)...');
+    }, 4000);
+    return () => clearTimeout(messageTimer);
+  }, []);
 
   useEffect(() => {
     // Configure Native Android Status Bar (prevents overlapping)
@@ -301,8 +309,18 @@ const App: React.FC = () => {
           </motion.div>
 
           {/* Loader */}
-          <Box sx={{ mt: 4 }}>
+          <Box sx={{ mt: 4, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
             <CircularProgress size={28} thickness={4} sx={{ color: 'primary.main' }} />
+            <motion.div
+              key={loadingMessage}
+              initial={{ opacity: 0, y: 5 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+            >
+              <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
+                {loadingMessage}
+              </Typography>
+            </motion.div>
           </Box>
         </Box>
       </ThemeProvider>

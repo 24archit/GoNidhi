@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { Preferences } from '@capacitor/preferences';
 import axios from 'axios';
+import { API_BASE } from '@gonidhi/shared';
 
 interface User {
   id: string;
@@ -23,15 +24,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [user, setUser] = useState<User | null>(null);
 
+  const logout = async () => {
+    await Preferences.remove({ key: 'adminToken' });
+    await Preferences.remove({ key: 'adminUser' });
+    delete axios.defaults.headers.common['Authorization'];
+    setIsAuthenticated(false);
+    setUser(null);
+  };
+
   useEffect(() => {
     const initAuth = async () => {
       const { value: token } = await Preferences.get({ key: 'adminToken' });
       const { value: storedUser } = await Preferences.get({ key: 'adminUser' });
       if (token && storedUser) {
-        setIsAuthenticated(true);
-        setUser(JSON.parse(storedUser));
-        // Set default auth header for all axios requests
-        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        try {
+          const response = await axios.get(`${API_BASE}/api/admin/auth/verify`, {
+             headers: { Authorization: `Bearer ${token}` }
+          });
+          if (response.data.success) {
+            setIsAuthenticated(true);
+            setUser(JSON.parse(storedUser));
+            axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+          } else {
+            await logout();
+          }
+        } catch (error) {
+          await logout();
+        }
+      } else {
+        await logout();
       }
     };
     initAuth();
@@ -43,14 +64,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     setIsAuthenticated(true);
     setUser(userData);
-  };
-
-  const logout = async () => {
-    await Preferences.remove({ key: 'adminToken' });
-    await Preferences.remove({ key: 'adminUser' });
-    delete axios.defaults.headers.common['Authorization'];
-    setIsAuthenticated(false);
-    setUser(null);
   };
 
   return (

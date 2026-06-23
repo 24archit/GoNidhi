@@ -8,28 +8,7 @@ dotenv.config();
 
 // Cloudinary automatically picks up CLOUDINARY_URL from the environment variables
 
-export const uploadBase64ToCloudinary = async (base64String: string, folder: string = 'gonidhi-telemetry'): Promise<string> => {
-    try {
-        if (!base64String) return "";
-        if (base64String.startsWith('http')) return base64String;
 
-        // Ensure proper format if it's raw base64 without the data URI scheme
-        let uploadStr = base64String;
-        if (!base64String.startsWith('data:image')) {
-            uploadStr = `data:image/jpeg;base64,${base64String}`;
-        }
-
-        const result = await cloudinary.uploader.upload(uploadStr, {
-            folder,
-            public_id: uuidv4()
-        });
-
-        return result.secure_url;
-    } catch (error) {
-        logger.error(error, 'Cloudinary base64 upload error:');
-        return "";
-    }
-};
 
 export const uploadBufferToCloudinary = async (buffer: Buffer, folder: string = 'gonidhi-images'): Promise<string> => {
     return new Promise((resolve, reject) => {

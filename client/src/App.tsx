@@ -1,5 +1,7 @@
 // Update client/src/App.tsx
 import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+import { API_BASE } from '@gonidhi/shared';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useOutlet } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import { CssBaseline, CircularProgress, Box, Typography, Stack } from '@mui/material';
@@ -146,6 +148,14 @@ const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [isAppReady, setIsAppReady] = useState(false);
   const isLandscape = useMediaQuery('(orientation: landscape)');
+  const [loadingMessage, setLoadingMessage] = useState<string>('Connecting...');
+
+  useEffect(() => {
+    const messageTimer = setTimeout(() => {
+      setLoadingMessage('Waking up server (cold start may take up to 50s)...');
+    }, 4000);
+    return () => clearTimeout(messageTimer);
+  }, []);
 
   useEffect(() => {
     // Yield to the browser render cycle first, then start health check
@@ -171,7 +181,26 @@ const App: React.FC = () => {
 
       // Check auth token
       const { value: tokenValue } = await Preferences.get({ key: 'jwt_token' });
-      setIsAuthenticated(!!tokenValue);
+      if (tokenValue) {
+        try {
+          const response = await axios.get(`${API_BASE}/api/farmer/auth/verify`, {
+            headers: { Authorization: `Bearer ${tokenValue}` }
+          });
+          if (response.data.success) {
+            setIsAuthenticated(true);
+          } else {
+            await Preferences.remove({ key: 'jwt_token' });
+            await Preferences.remove({ key: 'farmerUser' });
+            setIsAuthenticated(false);
+          }
+        } catch (error) {
+          await Preferences.remove({ key: 'jwt_token' });
+          await Preferences.remove({ key: 'farmerUser' });
+          setIsAuthenticated(false);
+        }
+      } else {
+        setIsAuthenticated(false);
+      }
     };
     checkAppState();
 
@@ -287,8 +316,18 @@ const App: React.FC = () => {
           </motion.div>
 
           {/* Loader */}
-          <Box sx={{ mt: 4 }}>
+          <Box sx={{ mt: 4, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
             <CircularProgress size={28} thickness={4} sx={{ color: 'primary.main' }} />
+            <motion.div
+              key={loadingMessage}
+              initial={{ opacity: 0, y: 5 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+            >
+              <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
+                {loadingMessage}
+              </Typography>
+            </motion.div>
           </Box>
         </Box>
       </ThemeProvider>

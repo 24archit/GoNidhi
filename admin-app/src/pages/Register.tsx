@@ -91,7 +91,7 @@ const Register: React.FC = () => {
                 adminSecret: formData.adminSecret
             });
             if (response.data.success) {
-                login(response.data.token, response.data.user);
+                await login(response.data.token, response.data.user);
                 navigate('/', { replace: true });
             }
         } catch (err: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) {

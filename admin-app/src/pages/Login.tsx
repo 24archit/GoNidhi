@@ -52,8 +52,7 @@ const Login: React.FC = () => {
             const response = await axios.post(`${API_BASE}/api/admin/auth/login`, formData);
             if (response.data.success) {
                 await login(response.data.token, response.data.user);
-                // navigate is removed here. AnimatedRoutes will automatically unmount Login and Redirect to / 
-                // when isAuthenticated flips to true. This stops the race condition.
+                navigate('/', { replace: true });
             }
         } catch (err: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
             console.error('Login API Error:', err);

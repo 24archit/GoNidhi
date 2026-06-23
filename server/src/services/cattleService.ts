@@ -1,10 +1,13 @@
 import { Cattle } from '../models/Cattel';
 import { User } from '../models/User';
+import { Dispute } from '../models/Dispute';
 import { uploadBufferToCloudinary, deleteFromCloudinary } from './cloudinaryService';
 import { dlApiClient } from '../utils/dlApiClient';
 import mongoose from 'mongoose';
 import crypto from 'crypto';
 import logger from '../utils/logger';
+import axios from 'axios';
+import { processTelemetry } from './telemetryService';
 import { deleteCowVectors } from '../utils/qdrantClient';
 
 export const createCattleRegistration = async (req: any, farmerId: string, payload: any, files: any) => {
@@ -299,3 +302,229 @@ export const cleanupCowCloudResources = async (cow: any) => {
         logger.error(err, 'Error in cleanupCowCloudResources:');
     }
 };
+
+export const executeCowSearch = async (
+    files: any, 
+    userId: string, 
+    role: string, 
+    endpointName: string, 
+    abortController: AbortController
+) => {
+    if (!files?.muzzleImage?.[0] || !files?.faceImage?.[0]) {
+        const err = new Error('Both a Face Profile and a Muzzle image are strictly required for AI verification.');
+        (err as any).statusCode = 400;
+        throw err;
+    }
+
+    let faceCloudinary: string | undefined;
+    let muzzleCloudinary: string | undefined;
+    
+    try {
+        const faceFile = files.faceImage[0];
+        const muzzleFile = files.muzzleImage[0];
+
+        // Fire and forget cloudinary uploads to reduce latency
+        uploadBufferToCloudinary(faceFile.buffer, 'gonidhi-telemetry').then((url) => { if (url) faceCloudinary = url; }).catch(() => {});
+        uploadBufferToCloudinary(muzzleFile.buffer, 'gonidhi-telemetry').then((url) => { if (url) muzzleCloudinary = url; }).catch(() => {});
+
+        const FormData = require('form-data');
+        const formData = new FormData();
+        formData.append('user_id', userId);
+        formData.append('role', role);
+        if (faceCloudinary) formData.append('face_image_url', faceCloudinary);
+        if (muzzleCloudinary) formData.append('muzzle_image_url', muzzleCloudinary);
+        formData.append('face_image', faceFile.buffer, { filename: 'face.jpg' });
+        formData.append('muzzle_image', muzzleFile.buffer, { filename: 'muzzle.jpg' });
+
+        const dlResponse = await dlApiClient.post(`/search`, formData, {
+            headers: formData.getHeaders(),
+            signal: abortController.signal,
+            timeout: 120000
+        });
+
+        const { match, cow_id, distance, reason, telemetry } = dlResponse.data;
+
+        if (telemetry) {
+            processTelemetry(telemetry, endpointName, match);
+        }
+
+        return { match, cow_id, distance, reason, telemetry };
+
+    } catch (dlError: any) {
+        if (faceCloudinary) deleteFromCloudinary(faceCloudinary).catch(() => { });
+        if (muzzleCloudinary) deleteFromCloudinary(muzzleCloudinary).catch(() => { });
+
+        if (axios.isCancel(dlError) || dlError.name === 'AbortError' || dlError.name === 'CanceledError') {
+            logger.info('Client disconnected, canceled DL API search request.');
+            const err = new Error('Client Closed Request');
+            (err as any).statusCode = 499;
+            throw err;
+        }
+        logger.error(dlError?.response?.data || dlError.message, 'Error calling DL API search:');
+        let errorDetail = dlError?.response?.data?.detail;
+        if (typeof errorDetail === 'object' && errorDetail?.message) {
+            errorDetail = errorDetail.message;
+        }
+        errorDetail = errorDetail || 'AI Service unavailable or could not process images.';
+        
+        const err = new Error(errorDetail);
+        (err as any).statusCode = 404;
+        throw err;
+    }
+};
+
+export const recentRejections = new Map<string, any>();
+const REJECTION_TTL_MS = 10 * 60 * 1000;
+
+export function getRejectionMessage(status: string, message?: string): string {
+    let userMessage = message ? message : `Registration failed due to: ${status}`;
+    if (!userMessage || userMessage === 'N/A' || userMessage.includes('Registration failed due to')) {
+        if (status === 'SPOOF_DETECTED_MUZZLE') {
+            userMessage = 'Registration failed: Spoofing detected in the Muzzle image. Make sure it is a real photo, not a screen or print.';
+        } else if (status === 'NO_MUZZLE_DETECTED_MUZZLE_IMAGE' || status === 'NO_MUZZLE_DETECTED') {
+            userMessage = 'Registration failed: Could not detect the muzzle clearly in the Muzzle profile image. Retake the Muzzle profile.';
+        } else if (status === 'NO_FACE_DETECTED') {
+            userMessage = 'Registration failed: Could not detect the face clearly in the Face profile image. Retake the Face profile.';
+        } else if (status === 'NO_BIOMETRICS_DETECTED') {
+            userMessage = 'Registration failed: Could not detect either a Face or Muzzle. Please retake the photos clearly.';
+        } else if (status === 'NOT_A_COW') {
+            userMessage = 'Registration failed: Images do not appear to contain a cow.';
+        } else if (status === 'DUPLICATE') {
+            userMessage = 'Registration failed: This cow is already registered.';
+        } else if (status === 'FAILED') {
+            userMessage = 'Registration failed: An unexpected error occurred while processing your request. Please try again.';
+        } else {
+            userMessage = `Registration failed: An unknown error occurred (${status}). Please try again.`;
+        }
+    }
+    return userMessage;
+}
+
+export async function processDlApiResult(payload: any) {
+    const { cow_id, farmer_id, status, matched_cow_id, superpoint_cache, error_message, telemetry } = payload;
+
+    if (telemetry) {
+        processTelemetry(telemetry, '/register', status === 'SUCCESS' || status === 'DUPLICATE' || status === 'DISPUTE');
+    }
+
+    if (!cow_id) return false;
+
+    // Atomically find and lock the cow for processing to prevent race conditions
+    // between DL-API webhook and farmer's profile query.
+    const cow = await Cattle.findOneAndUpdate(
+        { _id: cow_id, 'aiMetadata.status': 'PENDING' },
+        { $set: { 'aiMetadata.status': 'PROCESSING_RESULT' } },
+        { new: true }
+    );
+
+    if (!cow) {
+        logger.info(`[Sync] Cow ${cow_id} already processed or not pending.`);
+        
+        // If the webhook is arriving late (after the 6-minute cleanup job or instant rollback),
+        // we must ensure the late vector is purged from Qdrant to prevent split-brain.
+        try {
+            await deleteCowVectors(cow_id);
+            logger.info(`[Sync] Purged late-arriving vector for deleted cow: ${cow_id}`);
+        } catch (qErr) {
+            // Error already logged in qdrantClient
+        }
+        
+        return false;
+    }
+
+    try {
+        let finalStatus = status;
+
+        if (status === 'DUPLICATE' && matched_cow_id) {
+            const matchedCow = await Cattle.findById(matched_cow_id).select('farmerId').lean();
+            if (matchedCow && matchedCow.farmerId.toString() !== farmer_id.toString()) {
+                finalStatus = 'DISPUTE';
+            }
+        }
+
+        if (finalStatus === 'DUPLICATE') {
+            const session = await mongoose.startSession();
+            try {
+                await session.withTransaction(async () => {
+                    await Promise.all([
+                        Cattle.findByIdAndDelete(cow_id, { session }),
+                        User.findByIdAndUpdate(farmer_id, { $pull: { cows: cow_id } }, { session })
+                    ]);
+                });
+            } finally {
+                await session.endSession();
+            }
+            recentRejections.set(cow_id, { status, message: error_message } as any);
+            setTimeout(() => recentRejections.delete(cow_id), REJECTION_TTL_MS);
+
+            cleanupCowCloudResources(cow);
+            logger.info(`[Sync] Duplicate cow deleted for cow_id: ${cow_id}`);
+        } else if (finalStatus === 'DISPUTE') {
+            let originalFarmerId = null;
+            if (matched_cow_id) {
+                const matchedCow = await Cattle.findById(matched_cow_id);
+                if (matchedCow) {
+                    originalFarmerId = matchedCow.farmerId;
+                }
+            }
+
+            const session = await mongoose.startSession();
+            try {
+                await session.withTransaction(async () => {
+                    const tasks: Promise<any>[] = [
+                        Cattle.findByIdAndDelete(cow_id, { session }),
+                        User.findByIdAndUpdate(farmer_id, { $pull: { cows: cow_id } }, { session })
+                    ];
+                    
+                    if (matched_cow_id) {
+                        tasks.push(Cattle.findByIdAndUpdate(matched_cow_id, { isDispute: true }, { session }));
+                    }
+                    if (originalFarmerId && matched_cow_id) {
+                        tasks.push(Dispute.create([{
+                            cattleId: matched_cow_id,
+                            originalFarmerId: originalFarmerId,
+                            attemptingFarmerId: farmer_id,
+                            status: 'pending',
+                            reason: error_message || 'Duplicate Registration Attempt Detected via AI Biometrics'
+                        }], { session }));
+                    }
+                    
+                    await Promise.all(tasks);
+                });
+            } finally {
+                await session.endSession();
+            }
+
+            cleanupCowCloudResources(cow);
+            logger.info(`[Sync] Dispute marked for matched_cow_id: ${matched_cow_id}. Ghost cow ${cow_id} deleted.`);
+        } else if (finalStatus === 'SUCCESS') {
+            cow.aiMetadata.isRegistered = true;
+            cow.aiMetadata.status = status;
+            await cow.save();
+            logger.info(`[Sync] Successfully registered cow_id: ${cow_id}`);
+        } else {
+            const session = await mongoose.startSession();
+            try {
+                await session.withTransaction(async () => {
+                    await Promise.all([
+                        Cattle.findByIdAndDelete(cow_id, { session }),
+                        User.findByIdAndUpdate(farmer_id, { $pull: { cows: cow_id } }, { session })
+                    ]);
+                });
+            } finally {
+                await session.endSession();
+            }
+            recentRejections.set(cow_id, { status: finalStatus, message: error_message } as any);
+            setTimeout(() => recentRejections.delete(cow_id), REJECTION_TTL_MS);
+
+            cleanupCowCloudResources(cow);
+            logger.info(`[Sync] Failed AI processing, cow deleted for cow_id: ${cow_id}`);
+        }
+
+        return true;
+    } catch (error) {
+        logger.error(error, `[Sync] Error processing DL API result for cow ${cow_id}:`);
+        await Cattle.findByIdAndUpdate(cow_id, { $set: { 'aiMetadata.status': 'PENDING' } });
+        return false;
+    }
+}
