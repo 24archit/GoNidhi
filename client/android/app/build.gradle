@@ -23,17 +23,6 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
-
-    // Physically delete the 45MB TFJS muzzle model from the Android build assets
-    // so it doesn't inflate the APK size, since Android uses the native TFLite model instead.
-    applicationVariants.all { variant ->
-        variant.mergeAssetsProvider.configure {
-            doLast {
-                def assetsDir = it.outputDir.get().asFile
-                delete(new File(assetsDir, "public/model/muzzle"))
-            }
-        }
-    }
 }
 
 repositories {
