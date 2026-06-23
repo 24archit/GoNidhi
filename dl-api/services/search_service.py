@@ -125,7 +125,7 @@ async def _search_cow_impl(req: SearchRequest, fastapi_req: Request):
                 _fm_crop, _fm_conf = muzzle_crops_and_confs[1]
                 
                 _f_crop, _f_conf = face_crops_and_confs[0]
-                _ffm_crop, _ = face_crops_and_confs[1]
+                _ffm_crop, _ffm_conf = face_crops_and_confs[1]
                 
                 spoof_res = glb.dl.are_images_spoofs([muzzle_img, face_img])
                 _, _spoof_prob_m = spoof_res[0]
@@ -138,13 +138,16 @@ async def _search_cow_impl(req: SearchRequest, fastapi_req: Request):
             })
 
             if not _is_not_a_cow:
-                res.update({"muzzle_crop": _m_crop, "face_crop": _f_crop, "face_muzzle_crop": _fm_crop, "muzzle_conf": _m_conf, "face_conf": _f_conf, "face_muzzle_conf": _fm_conf})
+                res.update({"muzzle_crop": _m_crop, "face_crop": _f_crop, "face_muzzle_crop": _fm_crop, "face_from_muzzle_crop": _ffm_crop, "muzzle_conf": _m_conf, "face_conf": _f_conf, "face_muzzle_conf": _fm_conf})
 
-                _eff_f_crop = _f_crop or _ffm_crop
+                if _f_crop and _ffm_crop:
+                    _eff_f_crop = _f_crop if _f_conf >= _ffm_conf else _ffm_crop
+                else:
+                    _eff_f_crop = _f_crop or _ffm_crop
                 res["effective_face_crop"] = _eff_f_crop
 
-                clip_primary = Image.fromarray(cv2.cvtColor(face_img, cv2.COLOR_BGR2RGB)) if face_img is not None else None
-                clip_secondary = Image.fromarray(cv2.cvtColor(muzzle_img, cv2.COLOR_BGR2RGB)) if muzzle_img is not None else None
+                clip_primary = Image.fromarray(cv2.cvtColor(_eff_f_crop["raw"], cv2.COLOR_BGR2RGB)) if _eff_f_crop else None
+                clip_secondary = Image.fromarray(cv2.cvtColor(_m_crop["raw"], cv2.COLOR_BGR2RGB)) if _m_crop else None
 
                 if clip_primary is not None or clip_secondary is not None:
                     clip_result = glb.dl.clip_analyzer.analyze_images(face_pil=clip_primary, muzzle_pil=clip_secondary)
@@ -228,6 +231,11 @@ async def _search_cow_impl(req: SearchRequest, fastapi_req: Request):
         face_muzzle_upload_task = asyncio.create_task(asyncio.to_thread(upload_crop_to_cloudinary, face_muzzle_crop["clahe"]))
         req._upload_tasks.append(face_muzzle_upload_task)
 
+    if clip_reject_reason:
+        user_msg = CLIP_REJECT_MESSAGES.get(clip_reject_reason, "Image quality check failed. Please retake the photo.")
+        logger.warning(f"[CLIP Search] Blocked: {clip_reject_reason}")
+        _raise_early_search_error(clip_reject_reason, user_msg, req, start_time, spoof_prob_muzzle, spoof_prob_face)
+
     if effective_face_crop is None:
         detail = "We couldn't detect the cow's face from either photo. Please retake both photos ensuring the cow's face is fully visible."
         logger.warning("[Search] No face crop from either source image.")
@@ -236,11 +244,6 @@ async def _search_cow_impl(req: SearchRequest, fastapi_req: Request):
     if muzzle_crop is None and face_muzzle_crop is None:
         detail = "The muzzle is not clearly visible. Please wipe the muzzle clean and retake a sharp, close-up photo."
         _raise_early_search_error("NO_MUZZLE_DETECTED", detail, req, start_time, spoof_prob_muzzle, spoof_prob_face)
-
-    if clip_reject_reason:
-        user_msg = CLIP_REJECT_MESSAGES.get(clip_reject_reason, "Image quality check failed. Please retake the photo.")
-        logger.warning(f"[CLIP Search] Blocked: {clip_reject_reason}")
-        _raise_early_search_error(clip_reject_reason, user_msg, req, start_time, spoof_prob_muzzle, spoof_prob_face)
 
     if await fastapi_req.is_disconnected():
         logger.warning("Client disconnected after Feature Extraction.")
@@ -366,7 +369,8 @@ async def _search_cow_impl(req: SearchRequest, fastapi_req: Request):
         face_similarity_score=face_sim_score, muzzle_similarity_score=muzzle_sim_score,
         verdict=verdict, matched_image_url=matched_image_url, matched_cow_name=matched_cow_name,
         best_lg_matches=best_lg_matches, trad_metrics=trad_metrics,
-        best_features=best_features, xgb_score=best_xgb_score
+        best_features=best_features, xgb_score=best_xgb_score,
+        semantic_tags=clip_semantic_tags
     )
     
     logger.info(f"[Search Fast Fetch] Completed in {int(inference_time)}ms. Verdict: {verdict['match']}")

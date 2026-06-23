@@ -24,7 +24,8 @@ def build_telemetry_payload(
     best_lg_matches: int,
     trad_metrics: dict,
     best_features: dict,
-    xgb_score: float
+    xgb_score: float,
+    semantic_tags: dict = None
 ) -> dict:
     return {
         "job_type": job_type,
@@ -64,5 +65,6 @@ def build_telemetry_payload(
         "ds_belief_match": verdict.get("ds_belief_match") if verdict else None,
         "ds_belief_mismatch": verdict.get("ds_belief_mismatch") if verdict else None,
         "ds_uncertainty": verdict.get("ds_uncertainty") if verdict else None,
-        "pignistic_match": verdict.get("pignistic_match") if verdict else None
+        "pignistic_match": verdict.get("pignistic_match") if verdict else None,
+        "semantic_tags": semantic_tags
     }

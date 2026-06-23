@@ -434,6 +434,18 @@ export default function AnalyticsDetail() {
                 <DataRow label="Action By" value={log.farmerId ? ((log.farmerId === 'admin' || log.farmerId === 'admin_proxy') ? 'Admin' : `User: ${log.farmerId}`) : 'N/A'} />
                 <DataRow label="Inference Time" value={`${(log.inferenceTimeMs / 1000).toFixed(2)} s`} />
               </SectionCard>
+
+              {log.semanticTags && Object.keys(log.semanticTags).length > 0 && (
+                <SectionCard title="Semantic Tags (CLIP)" color="#00838f">
+                  {Object.entries(log.semanticTags).map(([key, value]) => (
+                    <DataRow 
+                      key={key} 
+                      label={key.replace('semantic_', '').toUpperCase()} 
+                      value={<Chip label={String(value).replace(/_/g, ' ')} size="small" variant="outlined" sx={{ textTransform: 'capitalize', fontWeight: 600 }} />} 
+                    />
+                  ))}
+                </SectionCard>
+              )}
             </Box>
           </Grid>
 

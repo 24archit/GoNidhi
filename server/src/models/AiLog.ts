@@ -44,6 +44,7 @@ export interface IAiLog extends Document {
     xgbScore?: number;
     fusionConfidence?: number;
     xgbMappedScore?: number;
+    semanticTags?: Record<string, string>;
     isAiOutcomeCorrect?: boolean;
     createdAt: Date;
 }
@@ -91,6 +92,7 @@ const AiLogSchema = new Schema<IAiLog>({
     xgbScore: { type: Number },
     fusionConfidence: { type: Number },
     xgbMappedScore: { type: Number },
+    semanticTags: { type: Object },
     isAiOutcomeCorrect: { type: Boolean }
 }, { timestamps: true });
 

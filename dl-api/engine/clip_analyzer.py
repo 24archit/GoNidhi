@@ -5,12 +5,8 @@ Single GPU forward-pass analyzer built on openai/clip-vit-base-patch16.
 
 Responsibilities
 ----------------
-1. **Liveness gate** (soft) — blocks photos taken from a screen / printout.
-   Only rejects when CLIP is highly confident (>= LIVENESS_REJECT_THRESHOLD),
-   so edge cases that could go either way pass through.
-2. **Contamination gate** — rejects muzzles with foam / dirt / food.
-3. **Alignment gate** — rejects upside-down or rotated face photos.
-4. **Semantic tagging** — extracts color, pattern, horns as DB-ready keywords.
+1. **Contamination gate** — rejects muzzles with foam / dirt / food.
+2. **Semantic tagging** — extracts color and horns as DB-ready keywords.
 
 GPU optimizations
 -----------------
@@ -40,17 +36,9 @@ CLIP_REJECT_MESSAGES: dict[str, str] = {
         "The photo appears to be in landscape orientation. "
         "Please retake in portrait mode with the cow's face upright."
     ),
-    "REJ_QA_NOT_LIVE_IMAGE": (
-        "The photo appears to have been taken from a screen or a printout. "
-        "Please capture a live photo directly of the cow."
-    ),
     "REJ_QA_CONTAMINATED_MUZZLE": (
         "The muzzle appears to have foam, dirt, or food particles on it. "
         "Please wipe it clean and retake the photo."
-    ),
-    "REJ_QA_BAD_ALIGNMENT": (
-        "The cow's face appears tilted or upside-down in the photo. "
-        "Please retake the photo with the face upright and facing the camera."
     ),
 }
 
@@ -63,20 +51,13 @@ class UnifiedCLIPAnalyzer:
     -----
     analyzer = UnifiedCLIPAnalyzer(device="cuda")
 
-    # Full QA + semantics (face crop from YOLO face detector)
-    result = analyzer.analyze_image(face_pil)
+    # Full QA + semantics (face/muzzle crops from YOLO detector)
+    result = analyzer.analyze_images(face_pil, muzzle_pil)
     # → {"status": "PASS", "metadata_payload": {"semantic_color": "black", ...}}
     # → {"status": "REJECT", "reason": "REJ_QA_CONTAMINATED_MUZZLE"}
-
-    # Muzzle-only QA (liveness + contamination, no semantics)
-    result = analyzer.analyze_muzzle(muzzle_pil)
     """
 
-    # Liveness gate: only reject if the non-live prompt wins AND its
-    # confidence >= this threshold. Keeps borderline real photos safe.
-    LIVENESS_REJECT_THRESHOLD = 0.80       # Liveness is most critical — keep high
-    ALIGNMENT_REJECT_THRESHOLD = 0.75      # Only reject if strongly confident it is rotated/upside down
-    CONTAMINATION_REJECT_THRESHOLD = 0.75  # Only reject if clearly dirty — avoids natural moist-muzzle false positives
+    CONTAMINATION_REJECT_THRESHOLD = 0.42  # Tuned via debug script to catch wet muzzles
 
     def __init__(self, device: str) -> None:
         self.device = device
@@ -114,39 +95,15 @@ class UnifiedCLIPAnalyzer:
         # then apply a binary softmax + threshold. This eliminates the 1-vs-N
         # asymmetry of the old single-PASS-prompt approach.
         self.qa_gate_schema: dict[str, dict] = {
-            "liveness": {
-                "pass": [
-                    "a photograph of a real, living cow",
-                    "a real cow being photographed in a natural environment",
-                    "a genuine high-quality photo of a cow",
-                ],
-                "fail": [
-                    "a photo of a monitor, screen, or digital display showing a cow",
-                    "a photo of a printed poster, photograph, or paper image of a cow",
-                ],
-            },
             "contamination": {
                 "pass": [
-                    "a close-up of a cow muzzle that is clean, with just natural moisture on it",
-                    "a cow muzzle that looks healthy and free of any debris",
+                    "a dry cow muzzle",
+                    "a clean cow muzzle",
                 ],
                 "fail": [
-                    "a cow muzzle heavily covered in white foam, drool, saliva, or bubbles",
-                    "a cow muzzle with visible mud, dirt, dung, or green grass clumped on it",
-                ],
-            },
-            "alignment": {
-                "pass": [
-                    "a high quality frontal portrait of a cow face",
-                    "a photo of a cow looking directly at the camera",
-                    "a clear, well-lit photo of a cow's face from the front",
-                    "a symmetrical close-up of a cow's face",
-                ],
-                "fail": [
-                    "a photo of a cow facing away from the camera",
-                    "a photo of a cow taken from the side profile",
-                    "a photo of a cow's body, missing the head",
-                    "a blurry, badly cropped, or unaligned photo of a cow",
+                    "a wet cow muzzle",
+                    "a cow muzzle with saliva, drool, or foam",
+                    "a dirty cow muzzle with mud",
                 ],
             },
         }
@@ -154,16 +111,9 @@ class UnifiedCLIPAnalyzer:
         # ── Semantic Tag Schema ────────────────────────────────────────────────
         self.prompt_schema: dict[str, list[str]] = {
             "color": [
-                "a photo of a cow face that is mostly black",
-                "a photo of a cow face that is mostly white",
-                "a photo of a cow face that is mostly dark brown",
-                "a photo of a cow face that is mostly red or reddish-brown",
-                "a photo of a cow face that is mostly tan, fawn, or light brown",
-                "a photo of a cow face that is mostly grey or silver",
-            ],
-            "pattern": [
-                "a photo of a cow face with a solid, uniform color",
-                "a photo of a cow face with distinct spots or patches",
+                "a close-up photo of a cow with white or grey fur",
+                "a close-up photo of a cow with brown, red, or tan fur",
+                "a close-up photo of a cow with black or dark brown fur",
             ],
             "horns": [
                 "a photo of a cow face with prominent horns",
@@ -173,16 +123,11 @@ class UnifiedCLIPAnalyzer:
 
         # Winning prompt text → clean DB keyword
         self.db_mappings: dict[str, str] = {
-            "a photo of a cow face that is mostly black":                  "black",
-            "a photo of a cow face that is mostly white":                  "white",
-            "a photo of a cow face that is mostly dark brown":             "dark_brown",
-            "a photo of a cow face that is mostly red or reddish-brown":   "red",
-            "a photo of a cow face that is mostly tan, fawn, or light brown": "tan_fawn",
-            "a photo of a cow face that is mostly grey or silver":         "grey",
-            "a photo of a cow face with a solid, uniform color":           "solid_face",
-            "a photo of a cow face with distinct spots or patches":        "spotted_face",
-            "a photo of a cow face with prominent horns":                  "horns",
-            "a photo of a cow face with short or no horns":                "polled",
+            "a close-up photo of a cow with white or grey fur":          "white_grey",
+            "a close-up photo of a cow with brown, red, or tan fur":     "brown_red",
+            "a close-up photo of a cow with black or dark brown fur":    "black_dark_brown",
+            "a photo of a cow face with prominent horns":                "horns",
+            "a photo of a cow face with short or no horns":              "polled",
         }
 
         # Build flat prompt list: QA gate prompts first, then semantic prompts
@@ -332,23 +277,14 @@ class UnifiedCLIPAnalyzer:
         fail_conf = float(scores.softmax(dim=0)[1].item())
         return fail_conf >= threshold
 
-    def _run_qa_gates(self, raw_logits: torch.Tensor, image_type: str, skip_liveness: bool = False):
+    def _run_qa_gates(self, raw_logits: torch.Tensor, image_type: str):
         """
         Dispatch gate checks based on image type.
         Returns rejection dict or None (pass).
-        Liveness can be skipped here when consensus mode is used in analyze_images.
         """
-        if not skip_liveness:
-            if self._run_qa_gate(raw_logits, "liveness", self.LIVENESS_REJECT_THRESHOLD):
-                return {"status": "REJECT", "reason": "REJ_QA_NOT_LIVE_IMAGE"}
-
         if image_type == "muzzle":
             if self._run_qa_gate(raw_logits, "contamination", self.CONTAMINATION_REJECT_THRESHOLD):
                 return {"status": "REJECT", "reason": "REJ_QA_CONTAMINATED_MUZZLE"}
-
-        if image_type == "face":
-            if self._run_qa_gate(raw_logits, "alignment", self.ALIGNMENT_REJECT_THRESHOLD):
-                return {"status": "REJECT", "reason": "REJ_QA_BAD_ALIGNMENT"}
 
         return None  # All gates passed
 
@@ -362,10 +298,7 @@ class UnifiedCLIPAnalyzer:
         muzzle_pil: Image.Image = None,
     ) -> dict:
         """
-        PRIMARY ENTRY POINT — Full QA + semantic analysis on original uncropped images.
-
-        Liveness uses a two-image consensus: only rejects if BOTH images flag a
-        liveness violation. All other gates are per-image.
+        PRIMARY ENTRY POINT — Full QA + semantic analysis on YOLO crops.
         """
         if face_pil is None and muzzle_pil is None:
             return {"status": "REJECT", "reason": "NO_IMAGE"}
@@ -388,43 +321,25 @@ class UnifiedCLIPAnalyzer:
         if muzzle_pil is not None:
             logits_muzzle = all_logits[enc_idx]
 
-        # ── Liveness consensus ─────────────────────────────────────────────────
-        # Only reject for liveness if BOTH images flag the problem independently.
-        # Single-image liveness flags are ignored (reduces false positives on
-        # borderline lighting conditions).
-        live_fail_face   = logits_face   is not None and self._run_qa_gate(logits_face,   "liveness", self.LIVENESS_REJECT_THRESHOLD)
-        live_fail_muzzle = logits_muzzle is not None and self._run_qa_gate(logits_muzzle, "liveness", self.LIVENESS_REJECT_THRESHOLD)
-        both_present = logits_face is not None and logits_muzzle is not None
-
-        if both_present:
-            if live_fail_face and live_fail_muzzle:
-                return {"status": "REJECT", "reason": "REJ_QA_NOT_LIVE_IMAGE"}
-        else:
-            # Only one image available — fall back to single-image liveness check
-            if live_fail_face or live_fail_muzzle:
-                return {"status": "REJECT", "reason": "REJ_QA_NOT_LIVE_IMAGE"}
-
-        # ── Per-image QA gates (skip liveness, already handled above) ──────────
-        if logits_face is not None:
-            rejection = self._run_qa_gates(logits_face, "face", skip_liveness=True)
-            if rejection:
-                return rejection
+        # ── Per-image QA gates ──────────
 
         if logits_muzzle is not None:
-            rejection = self._run_qa_gates(logits_muzzle, "muzzle", skip_liveness=True)
+            rejection = self._run_qa_gates(logits_muzzle, "muzzle")
             if rejection:
                 return rejection
 
-        # ── Semantic tagging: logit-space ensemble ─────────────────────────────
-        if logits_face is not None and logits_muzzle is not None:
-            semantic_logits = (logits_face + logits_muzzle) * 0.5
-        elif logits_face is not None:
+        # ── Semantic tagging ───────────────────────────────────────────────────
+        # We rely exclusively on the Face crop for semantics (color/horns) because
+        # the muzzle crop is too zoomed in on the nose and corrupts fur analysis.
+        if logits_face is not None:
             semantic_logits = logits_face
-        else:
+        elif logits_muzzle is not None:
             semantic_logits = logits_muzzle
+        else:
+            return {"status": "REJECT", "reason": "NO_IMAGE"}
 
         payload: dict = {}
-        for cat in ("color", "pattern", "horns"):
+        for cat in ("color", "horns"):
             probs = self._softmax_slice(semantic_logits, cat)
             winning_prompt = self.prompt_schema[cat][int(np.argmax(probs))]
             payload[f"semantic_{cat}"] = self.db_mappings[winning_prompt]

@@ -197,12 +197,18 @@ async def _process_registration_impl(payload: dict, upload_tasks: list, notify_w
                     _fm_crop, _fm_conf = muzzle_crops_and_confs[1]
                     
                     _f_crop, _f_conf = face_crops_and_confs[0]
-                    _ffm_crop, _ = face_crops_and_confs[1]
+                    _ffm_crop, _ffm_conf = face_crops_and_confs[1]
 
                     res.update({"muzzle_crop": _m_crop, "face_crop": _f_crop, "face_muzzle_crop": _fm_crop, "face_from_muzzle_crop": _ffm_crop, "muzzle_conf": _m_conf, "face_conf": _f_conf, "face_muzzle_conf": _fm_conf})
                     
-                    clip_primary = Image.fromarray(cv2.cvtColor(face_img, cv2.COLOR_BGR2RGB)) if face_img is not None else None
-                    clip_secondary = Image.fromarray(cv2.cvtColor(muzzle_img, cv2.COLOR_BGR2RGB)) if muzzle_img is not None else None
+                    if _f_crop and _ffm_crop:
+                        _eff_f_crop = _f_crop if _f_conf >= _ffm_conf else _ffm_crop
+                    else:
+                        _eff_f_crop = _f_crop or _ffm_crop
+                    res["effective_face_crop"] = _eff_f_crop
+
+                    clip_primary = Image.fromarray(cv2.cvtColor(_eff_f_crop["raw"], cv2.COLOR_BGR2RGB)) if _eff_f_crop else None
+                    clip_secondary = Image.fromarray(cv2.cvtColor(_m_crop["raw"], cv2.COLOR_BGR2RGB)) if _m_crop else None
 
                     if clip_primary is not None or clip_secondary is not None:
                         clip_result = glb.dl.clip_analyzer.analyze_images(face_pil=clip_primary, muzzle_pil=clip_secondary)
@@ -210,9 +216,6 @@ async def _process_registration_impl(payload: dict, upload_tasks: list, notify_w
                             res["clip_semantic_tags"] = clip_result["metadata_payload"]
                         else:
                             res["clip_reject_reason"] = clip_result["reason"]
-
-                    _eff_f_crop = _f_crop or _ffm_crop
-                    res["effective_face_crop"] = _eff_f_crop
 
                     # Unified GPU Batching for MegaDescriptor
                     crops_to_embed = []
@@ -492,7 +495,8 @@ async def _process_registration_impl(payload: dict, upload_tasks: list, notify_w
         cow_name=cow_name, face_similarity_score=face_sim_score, muzzle_similarity_score=muzzle_sim_score,
         verdict=verdict, matched_image_url=matched_image_url, matched_cow_name=matched_cow_name,
         best_lg_matches=best_lg_matches, trad_metrics=trad_metrics,
-        best_features=best_features, xgb_score=verdict.get("xgb_raw") if verdict else None
+        best_features=best_features, xgb_score=verdict.get("xgb_raw") if verdict else None,
+        semantic_tags=clip_semantic_tags
     )
 
     result = {
